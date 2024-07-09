@@ -2,8 +2,6 @@
 
 [liguodongiot/llm-action: 本项目旨在分享大模型相关技术原理以及实战经验。 (github.com)](https://github.com/liguodongiot/llm-action#llm应用开发)
 
-
-
 ### api
 
 chatgpt key：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
@@ -12,9 +10,6 @@ chatgpt key：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
 
 运行
 
-1.  wasm + rust +wasi-nn
-
-
+1. wasm + rust +wasi-nn
 
 ### GO
-
