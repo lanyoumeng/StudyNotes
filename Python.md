@@ -1151,7 +1151,7 @@ file object = open(file_name [, access_mode][, buffering])
 
 下图很好的总结了这几种模式：
 
-![Screenshot 2024-07-09 234906](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092349593.png?token=AWX6LWSRSZ62HJLM4PCPODLGRVOGK)
+![202407092349593](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111928023.png)
 
 | 模式       | r    | r+   | w    | w+   | a    | a+   |
 | ---------- | ---- | ---- | ---- | ---- | ---- | ---- |
@@ -1331,7 +1331,7 @@ fo.close()
 读取的字符串是 :  www.runoob
 ```
 
-![image-20240114210911412](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092350460.png?token=AWX6LWTI6UQQHGGZKFCFGUDGRVOIY)
+![202407092350460](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111928916.png)
 
 ## 文件定位
 

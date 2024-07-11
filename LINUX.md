@@ -121,7 +121,7 @@ sudo yum install java-1.8.0-openjdk-devel
 
 # 基本linux命令
 
-![基本linux命令](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092329487.png?token=AWX6LWTZKP7LL4K6IJ6K6F3GRVL3M)
+![202407092329487](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111921268.png)
 
 ### 1.1 su命令
 
@@ -401,7 +401,7 @@ vi是Linux操作系统的一个编辑器，vim是vi的升级版，不仅兼容vi
 
 vi/vim编辑器共分为三种工作模式：普通模式、编辑模式和命令模式。
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092333839.jpeg?token=AWX6LWXYCKUIDFK2GX6VLXLGRVMKM)
+![202407092333839](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111933819.jpeg)
 
 \1) 普通模式：用vim打开一个文档后，直接见到的就是普通模式，在该模式下，用户可以通过“←↑↓→”按键来移动光标，可以删除字符或删除整行，也可以复制和粘贴数据。
 
@@ -535,15 +535,15 @@ gpgcheck = 0 #不对文件进行校验
 
 【注意】如果安装gcc时正常，继续安装gcc-c++时提示如下错误：
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092334668.jpeg?token=AWX6LWSHU2ZMF25KTMVAYMDGRVMM4)
+![202407092334668](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111921001.jpeg)
 
 这种情况说明yum安装源有问题，查看/etc/yum.repos.d目录，发现该目录下除了dvd.repo外多了一个文件packagekit-media.repo
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092334550.jpeg?token=AWX6LWW3SBDJSXMW6BYPTVLGRVMNU)
+![202407092334550](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111921025.jpeg)
 
 将该文件删除，删除后再次运行yum install gcc-c++重新安装gcc-c++即可。
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092334951.jpeg?token=AWX6LWTABZWNROFAPUQ2DE3GRVMOE)
+![202407092334951](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111922554.jpeg)
 
 ## 常用编译选项及编译流程分析
 
@@ -569,7 +569,7 @@ gcc有超过100 个的编译选项可用，这里仅介绍最常用的几种：
 
 在默认的状态下，如果gcc指令没有指定编译选项的情况下会在当前目录下生成一个名位a.out的可执行程序，例如：执行# gcc Test.c命令之后会生成一个a.out的可执行程序。因此，为了指定生成的可执行程序的文件名，就可以采用-o选项，比如下面的指令：
 
-**![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092335690.png?token=AWX6LWXZJDOVN7X7MDMQEKLGRVMPW)**
+![202407092335690](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111922664.png)
 
 执行该指令会在当前目录下生成一个名为Test的可执行文件。
 
@@ -587,7 +587,7 @@ gcc有超过100 个的编译选项可用，这里仅介绍最常用的几种：
 
 一个Test1.c的源程序经过下面的编译之后会生成一个Test1.o的文件。
 
-**![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092335309.png?token=AWX6LWWV5NI3Y4JUSFCJMHDGRVMQO)**
+![202407092335309](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111922887.png)
 
 【注意】目标文件包含机器语言代码，但目标文件不能运行，它还缺少系统的启动代码和库代码。目标文件、启动代码和库代码由链接器结合在一起，放在一个文件里，这个文件才是可执行文件。
 
@@ -595,7 +595,7 @@ gcc有超过100 个的编译选项可用，这里仅介绍最常用的几种：
 
 ⑤ **-x language**：**强制编译器用**指定的语言编译器**来编译某个源程序。
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092335222.png?token=AWX6LWVQ22PF6V2WC2EYG7DGRVMQ4)
+![202407092335222](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111923078.png)
 
 该指令表示强制采用C++编译器来编译C程序P1.c。
 
@@ -605,11 +605,11 @@ gcc有超过100 个的编译选项可用，这里仅介绍最常用的几种：
 
 【例1】 下面举一个简单的例子来说明gcc的编译过程。首先用vi编辑器编辑一个简单的c程序test.c：
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092335483.png?token=AWX6LWUECRGHOGNIEA2TLCLGRVMRK)
+![202407092335483](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111923990.png)
 
 根据前面讲到的内容，使用gcc命令来编译该程序：
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092335781.png?token=AWX6LWTZDKTJKP4DBPKMWJDGRVMRW)
+![202407092335781](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111923767.png)
 
 可以从上面的编译过程看到，编译一个这样的程序非常简单，一条指令即可完成，事实上，这一条指令掩盖了很多细节。我们可以从编译器的角度来看上述的编译过程，这对于更好理解gcc编译工作原理有很好的帮助。
 
@@ -617,11 +617,11 @@ gcc有超过100 个的编译选项可用，这里仅介绍最常用的几种：
 
 gcc编译器首先做的工作是预处理：调用-E 参数可以让gcc在预处理结束后停止编译过程。
 
-**![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092336784.png?token=AWX6LWWGJ4SPEUVDMMWDZSDGRVMSC)**
+![202407092336784](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111923348.png)
 
 编译器在这一步调用cpp工具来对源程序进行预处理，此时会生成test.i文件，下面部分列出了test.i文件中的内容。
 
-**![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092336904.png?token=AWX6LWS5NSIHCOJE4JLRUCLGRVMSK)**
+![202407092336904](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111923986.png)
 
 查看代码会发现stdio.h的内容都被加入到该文件里去了，而且被预处理的宏定义也都作了相应的处理。
 
@@ -635,7 +635,7 @@ gcc的选项“-S”能使编译器在进行完汇编之前就停止。
 
 以下列出了test.s的内容，有兴趣的同学可以分析一下这个简单的C语言小程序用汇编代码是如何实现的。
 
-![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092336069.jpeg?token=AWX6LWSATDU2QGQV4QYZA7TGRVMTA)
+![202407092336069](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111924800.jpeg)
 
 可以看到，这个C语言小程序在汇编中已经复杂很多了，这也是C语言作为中级语言的优势所在。
 
@@ -655,7 +655,7 @@ gcc的选项“-S”能使编译器在进行完汇编之前就停止。
 
 完成链接后，gcc就可以生成最终的可执行文件：
 
-**![img](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092336081.png?token=AWX6LWRE5YFN5J3B2GE6BODGRVMTO)**
+![202407092336081](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111924909.png)
 
 # systemctl
 
@@ -921,7 +921,7 @@ exec 函数族可以使用系统默认的环境变量，也可以传入指定的
 | 第6位                         | e：可传递新进程环境变量   | execle、execve        |
 | p：可执行文件查找方式为文件名 | execlp、execvp            |                       |
 
-![image-20240709233846707](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092338941.png?token=AWX6LWUNKMZS5UK5VCDEN6TGRVM4K)
+![202407092338941](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111924454.png)
 
 
 
@@ -962,11 +962,11 @@ int main()
 
 运行结果如下：
 
-![image-20240709234041666](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092340899.png?token=AWX6LWR3EUFYH574YTRTK23GRVNDQ)
+![202407092340899](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111924949.png)
 
 \# env /* 查看环境变量，可看到PATH的值*/
 
-![image-20240709234047758](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092340933.png?token=AWX6LWRLTCSOSQCDZ7ZGTETGRVND4)
+![202407092340933](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111925436.png)
 
 此程序的运行结果与在shell 中直接键入命令“ps -u”是一样的。
 
@@ -1121,13 +1121,13 @@ int main()
 
 【测试一】将execl("/bin/ps", "ps", "-u", NULL)改为execl(**"ps"**, "ps", "-u", NULL)，执行程序时将找不到ps命令，此时errno为ENOENT，对应数值为2：
 
-![image-20240709234235953](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092342161.png?token=AWX6LWTMRYKHQR245FKSMUTGRVNKU)
+![202407092342161](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111925544.png)
 
 【测试二】将测试一所做的修改恢复，然后将ps命令“组外其他用户”的可执行权去掉，再切换到rjxy用户执行程序。rjxy在执行程序过程中需要调用ps命令，而ps命令将rjxy用户的可执行权删掉了，所以在执行过程中缺少对应的权限，此时errno为EACCES，对应数值为13：
 
-![image-20240709234241811](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092342988.png?token=AWX6LWSSRNKGRKGWH7UXSW3GRVNLA)
+![202407092342988](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111925527.png)
 
-![image-20240709234247006](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092342197.png?token=AWX6LWUCQHD2CDJ5QLAPSZTGRVNLK)
+![202407092342197](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111926757.png)
 
 【小知识】 事实上，这6 个函数中真正的系统调用只有execve()，其他5个都是库函数，它们最终都会调用execve()这个系统调用。
 
@@ -1137,7 +1137,7 @@ int main()
 
 exit()和_exit()函数都是用来终止进程的。当程序执行到exit()或_exit()时，进程会无条件地停止剩下的所有操作，清除包括进程控制块（PCB）在内的各种数据结构，并终止本进程的运行。但是，这两个函数还是有区别的，这两个函数的调用过程如下图所示：
 
-![image-20240709234255507](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092342709.png?token=AWX6LWSVKOD43YQVUI2V5HLGRVNL2)
+![202407092342709](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111926642.png)
 
 从图中可以看出，_exit()函数的作用是：直接使进程停止运行，清除其使用的内存空间，并清除其在内核中的各种数据结构；exit()函数则在这些基础上做了一些包装，在执行退出之前加了若干道工序。
 
@@ -1295,7 +1295,7 @@ father continue...
 
 waitpid()为例进行讲解。本例中首先使用fork()创建一个子进程，然后让其子进程暂停5s（使用sleep()函数）。接下来对原有的父进程使用waitpid()函数，并使用参数WNOHANG使该父进程不会阻塞。若有子进程退出，则waitpid()返回子进程号；若没有子进程退出，则waitpid()返回0，并且父进程每隔一秒循环判断一次。该程序的流程图如下图所示：
 
-![image-20240709234415071](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/typora/202407092344292.png?token=AWX6LWQ43FABV4YSJOFMRR3GRVNQ4)
+![image-20240711193239058](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111932288.png)
 
 该程序源代码如下所示：
 
