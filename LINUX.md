@@ -328,13 +328,195 @@ sudo yum install java-1.8.0-openjdk-devel
 
 
 
-## 基本linux命令
+## linux命令
+
+Linux 的命令行非常强大，常用命令涵盖了文件操作、系统管理、网络配置、进程管理等多个领域。以下是一些常用的 Linux 命令及其简要说明：
+
+### 1. **文件和目录操作**
 
 1.  重定向  >
-2. cp  复制  cp -r  递归复制
-3. tree  目录树
+2.  cp  复制  cp -r  递归复制
+3.  tree  目录树
 
-![202407092329487](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111921268.png)
+- **`ls`**：列出目录内容。
+  - `ls -l`：详细列表格式。
+  - `ls -a`：显示所有文件，包括隐藏文件。
+
+- **`cd`**：改变当前目录。
+  - `cd /path/to/directory`：进入指定目录。
+  - `cd ..`：返回上一级目录。
+
+- **`pwd`**：显示当前目录的路径。
+
+- **`cp`**：复制文件或目录。
+  - `cp file1 file2`：复制文件 file1 为 file2。
+  - `cp -r dir1 dir2`：递归复制目录 dir1 为 dir2。
+
+- **`mv`**：移动或重命名文件或目录。
+  - `mv file1 file2`：将 file1 重命名为 file2 或移动到 file2。
+
+- **`rm`**：删除文件或目录。
+  - `rm file`：删除文件。
+  - `rm -r dir`：递归删除目录。
+
+- **`mkdir`**：创建目录。
+  - `mkdir new_dir`：创建名为 new_dir 的目录。
+
+- **`rmdir`**：删除空目录。
+  - `rmdir empty_dir`：删除名为 empty_dir 的空目录。
+
+- **`touch`**：创建一个空文件或更新文件的时间戳。
+  - `touch newfile.txt`：创建新文件或更新现有文件的时间戳。
+
+- **`find`**：在目录中查找文件或目录。
+  - `find /path -name filename`：在指定路径中查找文件。
+
+- **`cat`**：连接文件并打印到标准输出。
+  - `cat file`：显示文件内容。
+
+- **`more`**/**`less`**：分页显示文件内容。
+  - `less file`：逐页浏览文件内容。
+
+- **`head`**/**`tail`**：显示文件的开头或结尾部分。
+  - `head -n 10 file`：显示文件的前 10 行。
+  - `tail -n 10 file`：显示文件的最后 10 行。
+
+### 2. **系统信息和管理**
+- **`uname`**：显示系统信息。
+  - `uname -a`：显示所有系统信息。
+
+- **`df`**：显示文件系统的磁盘使用情况。
+  - `df -h`：以人类可读的格式显示磁盘使用情况。
+
+- **`du`**：估算文件或目录的磁盘使用情况。
+  - `du -sh dir`：显示目录的总大小。
+
+- **`top`**/**`htop`**：实时显示系统进程及资源使用情况。
+  - `top`：显示进程和系统资源使用情况。
+  - `htop`：更友好的进程监控工具（需安装）。
+
+- **`ps`**：显示当前运行的进程。
+  - `ps aux`：显示所有进程的详细信息。
+
+- **`kill`**/**`killall`**：终止进程。
+  - `kill PID`：终止指定进程号 (PID) 的进程。
+  - `killall process_name`：终止指定进程名的所有进程。
+
+- **`uptime`**：显示系统运行时间和负载平均值。
+
+- **`free`**：显示内存的使用情况。
+  - `free -h`：以人类可读的格式显示内存使用情况。
+
+- **`shutdown`**/**`reboot`**：关闭或重启系统。
+  - `shutdown -h now`：立即关机。
+  - `reboot`：立即重启。
+
+### 3. **文件权限和所有权**
+- **`chmod`**：改变文件权限。
+  - `chmod 755 file`：设置文件权限为 `rwxr-xr-x`。
+
+- **`chown`**：改变文件所有者和组。
+  - `chown user:group file`：将文件所有者和组更改为指定用户和组。
+
+- **`umask`**：显示或设置默认文件权限掩码。
+
+### 4. **网络操作**
+- **`ping`**：测试网络连通性。
+  - `ping google.com`：测试与 google.com 的连接。
+
+- **`curl`**/**`wget`**：从网络下载文件或发送网络请求。
+  - `curl -O URL`：下载指定 URL 的文件。
+  - `wget URL`：下载指定 URL 的文件。
+
+- **`ifconfig`**/**`ip`**：显示或配置网络接口。
+  - `ifconfig`：显示所有网络接口的信息。
+  - `ip addr show`：显示所有网络接口的 IP 地址信息。
+
+  <img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409022133652.png" alt="showeth0" style="zoom:33%;" />
+  
+- **`netstat / ss`**：查看 socket、网络协议栈、网口以及路由表的信息。
+  
+  - `netstat -tuln`：显示所有监听的 TCP 和 UDP 端口。
+  - `ss` 命令输出的统计信息相比 `netsat` 比较少，但性能较好
+  
+  包含了 socket 的状态（*State*）、接收队列（*Recv-Q*）、发送队列（*Send-Q*）、本地地址（*Local Address*）、远端地址（*Foreign Address*）、进程 PID 和进程名称（*PID/Program name*）
+  
+  <img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409022134782.png" alt="showsocket" style="zoom: 33%;" />
+  
+  <img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409022136838.png" alt="showinfo" style="zoom:25%;" />
+  
+- **`ssh`**：通过 SSH 远程登录。
+  
+  - `ssh user@host`：以用户身份登录到指定主机。
+  
+- **`scp`**：通过 SSH 复制文件。
+  - `scp file user@host:/path`：将本地文件复制到远程主机。
+  
+- `sar` 命令当前网络的吞吐率和 PPS，用法是给 `sar` 增加 `-n` 参数就可以查看网络的统计信息，比如
+
+  - sar -n DEV，显示网口的统计数据；
+
+  - sar -n EDEV，显示关于网络错误的统计数据；
+
+  - sar -n TCP，显示 TCP 的统计数据
+
+    <img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409022138057.png" alt="sar" style="zoom:33%;" />
+
+- `ethtool` 命令来查询带宽，它的单位通常是 `Gb/s` 或者 `Mb/s`
+
+  ```
+  $ ethtool eth0 | grep Speed
+    Speed: 1000Mb/s
+  ```
+
+### 5. **压缩和解压**
+- **`tar`**：打包和解包文件。
+  - `tar -czvf archive.tar.gz dir`：将目录压缩为 tar.gz 文件。
+  - `tar -xzvf archive.tar.gz`：解压 tar.gz 文件。
+
+- **`zip`**/**`unzip`**：压缩和解压 ZIP 文件。
+  - `zip -r archive.zip dir`：将目录压缩为 ZIP 文件。
+  - `unzip archive.zip`：解压 ZIP 文件。
+
+- **`gzip`**/**`gunzip`**：压缩和解压 GZIP 文件。
+  - `gzip file`：压缩文件为 .gz。
+  - `gunzip file.gz`：解压 .gz 文件。
+
+### 6. **文本处理**
+
+`ls -lh` 命令查看日志文件的大小，如果日志文件大小非常大，最好不要在线上环境做。
+
+使用 `scp` 命令将文件传输到闲置的服务器再分析
+
+对于大文件，不用cat，用 `less` 命令去读文件里的内容
+
+- **`grep`**：在文件中搜索文本模式。
+  - `grep "pattern" file`：搜索文件中的指定模式。
+
+- **`sed`**：流编辑器，用于文本替换和处理。
+  - `sed 's/old/new/g' file`：将文件中的所有 `old` 替换为 `new`。
+
+- **`awk`**：文本处理工具，用于数据提取和报告生成。
+  - `awk '{print $1}' file`：打印文件的第一列。
+
+- **`sort`**：对文件中的行进行排序。
+  - `sort file`：对文件内容进行排序。
+
+- **`uniq`**：报告或忽略文件中的重复行。
+  - `uniq file`：过滤掉文件中的重复行。
+
+- **`wc`**：计算文件中的行数、单词数和字符数。
+  - `wc -l file`：显示文件的行数。
+
+### 7. **系统更新和包管理（以 Ubuntu 为例）**
+- **`apt-get update`**：更新包列表。
+- **`apt-get upgrade`**：升级所有已安装的软件包。
+- **`apt-get install package_name`**：安装软件包。
+- **`apt-get remove package_name`**：卸载软件包。
+
+
+
+
 
 ### chmod
 
@@ -728,6 +910,28 @@ lsof -t
    6. 使用 `ln` 命令创建硬链接。
 
 总的来说，软链接是一个指向文件路径的引用，而硬链接是直接指向文件数据的另一个目录项。软链接可以跨文件系统，但对于原始文件的删除或移动更敏感，而硬链接必须在同一文件系统内创建，但对于原始文件的维护更加稳固。
+
+
+
+### 查看网络的性能指标
+
+通常是以 4 个指标来衡量网络的性能，分别是带宽、延时、吞吐率、PPS（Packet Per Second），它们表示的意义如下：
+
+- *带宽*，表示链路的最大传输速率，单位是 b/s （比特 / 秒），带宽越大，其传输能力就越强。
+- *延时*，表示请求数据包发送后，收到对端响应，所需要的时间延迟。不同的场景有着不同的含义，比如可以表示建立 TCP 连接所需的时间延迟，或一个数据包往返所需的时间延迟。
+- *吞吐率*，表示单位时间内成功传输的数据量，单位是 b/s（比特 / 秒）或者 B/s（字节 / 秒），吞吐受带宽限制，带宽越大，吞吐率的上限才可能越高。
+- *PPS*，全称是 Packet Per Second（包 / 秒），表示以网络包为单位的传输速率，一般用来评估系统对于网络的转发能力。
+
+当然，除了以上这四种基本的指标，还有一些其他常用的性能指标，比如：
+
+- *网络的可用性*，表示网络能否正常通信；
+- *并发连接数*，表示 TCP 连接数量；
+- *丢包率*，表示所丢失数据包数量占所发送数据组的比率；
+- *重传率*，表示重传网络包的比例；
+
+## 网络配置
+
+
 
 ------
 
