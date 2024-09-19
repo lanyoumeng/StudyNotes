@@ -898,136 +898,6 @@ func main() {
 
 
 
-
-
-### 通道
-
-基于通信实现共享内存
-
-1.通道（channel）是用来传递数据的一个数据结构。（其实就是一个环形队列） //多协程共享、协调同步 通道可用于两个 goroutine 之间通过传递一个指定类型的值来同步运行和通讯。操作符 `<-` 用于指定通道的方向，发送或接收。如果未指定方向，则为双向通道。
-
-如果无法发送或接收，管道就会堵塞
-
-```Go
-ch <- v    // 把 v 发送到通道 ch
-v := <-ch  // 从 ch 接收数据
-           // 并把值赋给 v
-
-select {
-    case num1 := <-ch1:
-        fmt.Println("Received from ch1:", num1)
-    case num2 := <-ch2:
-        fmt.Println("Received from ch2:", num2)
-    }
-```
-
-2.声明一个通道
-
-```Go
-ch := make(chan int)
-```
-
-默认情况下，通道是不带缓冲区的 非缓冲通道意味着它**一次只能容纳一个值**，并且当发送者向通道写入数据时，它会**阻塞**直到接收者从通道中读取数据，反之亦然。
-
-3.通道缓冲区 通道可以设置缓冲 区，通过 make 的第二个参数指定缓冲区大小：
-
-```Go
-ch := make(chan int, 100)
-```
-
-4.遍历通道与关闭通道 range 关键字
-
-在 Go 语言中，使用 `range` 关键字可以对通道（channel）进行迭代，从通道接收数据直到通道关闭为止。使用 `range` 遍历通道可以更加简洁和直观地处理通道中的数据。
-
-```Go
-func main() {
-        // 创建一个字符串类型的通道
-        channel := make(chan string)
-
-        // 启动一个 goroutine 发送数据到通道
-        go func() {
-                channel <- "Hello"
-                channel <- "Go"
-                close(channel) // 关闭通道
-        }()
-
-        // 使用 range 迭代通道中的数据，直到通道关闭为止
-        for message := range channel {
-                fmt.Println(message)
-        }
-}
-```
-
-需要注意的是，当通道被关闭后，`range` 循环会自动退出。因此，在使用 `range` 进行通道迭代时，通常不需要显示地检查通道是否关闭，因为 `range` 会自动感知通道的关闭状态并退出循环。
-
-```Go
-v, ok := <-ch
-```
-
-`ok` 为`false`：通道关闭且为空
-
-```Go
-延迟返回
-go func(){
-defer close(src)
-for i:=0;i<5;i++{
-   src <- i
-} }
-```
-
-5.
-
-一个消费者生产者例子
-
-```Go
-ch := make(chan int, 100)
-wg := sync.WaitGroup{}
-
-//两个生产者
-wg.Add(2)
-go func() {
-    defer wg.Done()
-    for i := 0; i < 10; i++ {
-       ch <- i
-    }
-}()
-go func() {
-    defer wg.Done()
-    for i := 0; i < 10; i++ {
-       ch <- i
-    }
-}()
-//wg.Wait()
-//一个消费者
-//可以利用管道来实现main堵塞，达到和 sync.WaitGroup 一样的功能
-mc := make(chan struct{}) //使用struct{} 1.可读性强，明显可以看出不是充当容器的  2.空结构体不占内存空间
-go func() {
-    sum := 0
-    for {
-       a, ok := <-ch
-       if !ok {
-          break
-       } else {
-          sum += a
-       }
-    }
-    fmt.Printf("sum=%d\n", sum)
-    mc <- struct{}{}
-}()
-
-wg.Wait()
-close(ch)
-<-mc
-```
-
-6.死锁问题
-
-当没有希望时，会直接结束go进程
-
-但如果有个未知代码块时，会等待该代码,而不是立马结束go进程
-
-如sleep(1*time.hour)
-
 ### 进程信息
 
 ![202407092303833](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202407111919747.png)
@@ -2143,7 +2013,141 @@ v := make([]string, 0, 4)
 
 
 
+### channel
+
+基于通信实现共享内存
+
+1.通道（channel）是用来传递数据的一个数据结构。（其实就是一个环形队列） //多协程共享、协调同步 通道可用于两个 goroutine 之间通过传递一个指定类型的值来同步运行和通讯。操作符 `<-` 用于指定通道的方向，发送或接收。如果未指定方向，则为双向通道。
+
+如果无法发送或接收，管道就会堵塞
+
+```Go
+ch <- v    // 把 v 发送到通道 ch
+v := <-ch  // 从 ch 接收数据
+           // 并把值赋给 v
+
+select {
+    case num1 := <-ch1:
+        fmt.Println("Received from ch1:", num1)
+    case num2 := <-ch2:
+        fmt.Println("Received from ch2:", num2)
+    }
+```
+
+2.声明一个通道
+
+```Go
+ch := make(chan int)
+```
+
+默认情况下，通道是不带缓冲区的 非缓冲通道意味着它**一次只能容纳一个值**，并且当发送者向通道写入数据时，它会**阻塞**直到接收者从通道中读取数据，反之亦然。
+
+3.通道缓冲区 通道可以设置缓冲 区，通过 make 的第二个参数指定缓冲区大小：
+
+```Go
+ch := make(chan int, 100)
+```
+
+4.遍历通道与关闭通道 range 关键字
+
+在 Go 语言中，使用 `range` 关键字可以对通道（channel）进行迭代，从通道接收数据直到通道关闭为止。使用 `range` 遍历通道可以更加简洁和直观地处理通道中的数据。
+
+```Go
+func main() {
+        // 创建一个字符串类型的通道
+        channel := make(chan string)
+
+        // 启动一个 goroutine 发送数据到通道
+        go func() {
+                channel <- "Hello"
+                channel <- "Go"
+                close(channel) // 关闭通道
+        }()
+
+        // 使用 range 迭代通道中的数据，直到通道关闭为止
+        for message := range channel {
+                fmt.Println(message)
+        }
+}
+```
+
+需要注意的是，当通道被关闭后，`range` 循环会自动退出。因此，在使用 `range` 进行通道迭代时，通常不需要显示地检查通道是否关闭，因为 `range` 会自动感知通道的关闭状态并退出循环。
+
+```Go
+v, ok := <-ch
+```
+
+`ok` 为`false`：**读已关闭且没有数据**通道
+
+```Go
+延迟返回
+go func(){
+defer close(src)
+for i:=0;i<5;i++{
+   src <- i
+} }
+```
+
+5.
+
+一个消费者生产者例子
+
+```Go
+ch := make(chan int, 100)
+wg := sync.WaitGroup{}
+
+//两个生产者
+wg.Add(2)
+go func() {
+    defer wg.Done()
+    for i := 0; i < 10; i++ {
+       ch <- i
+    }
+}()
+go func() {
+    defer wg.Done()
+    for i := 0; i < 10; i++ {
+       ch <- i
+    }
+}()
+//wg.Wait()
+//一个消费者
+//可以利用管道来实现main堵塞，达到和 sync.WaitGroup 一样的功能
+mc := make(chan struct{}) //使用struct{} 1.可读性强，明显可以看出不是充当容器的  2.空结构体不占内存空间
+go func() {
+    sum := 0
+    for {
+       a, ok := <-ch
+       if !ok {
+          break
+       } else {
+          sum += a
+       }
+    }
+    fmt.Printf("sum=%d\n", sum)
+    mc <- struct{}{}
+}()
+
+wg.Wait()
+close(ch)
+<-mc
+```
+
+6.死锁问题
+
+当没有希望时，会直接结束go进程
+
+但如果有个未知代码块时，会等待该代码,而不是立马结束go进程
+
+如sleep(1*time.hour)
+
+------
+
+
+
 ## 数据结构
+
+源码的函数名和代码使用时的名称不一样，是通过编译来连接到一起的
 
 ### map
 
@@ -5478,6 +5482,164 @@ s1: [0 0], len of s1: 2, cap of s1: 4
 虽然切**片是引用传递，但是在方法调用时，传递的会是一个新的 slice header.**
 
 因此在局部方法 changeSlice 中，虽然对 s1 进行了 append 操作，但这会在局部方法中这个**独立的 slice header 中生效**，不会影响到原方法 Test_slice 当中的 s 和 s1 的长度和容量.
+
+
+
+
+
+### channel
+
+通过**通信**来实现**共享内存**（channel），而不是通过共享内存来实现通信（例如多线程）
+
+
+
+#### 1 核心数据结构
+
+<img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409191052990.png" alt="640" style="zoom: 67%;" />
+
+##### 1.1 hchan
+
+```
+type hchan struct {
+    qcount   uint           // total data in the queue
+    dataqsiz uint           // size of the circular queue
+    buf      unsafe.Pointer // points to an array of dataqsiz elements
+    elemsize uint16
+    closed   uint32
+    elemtype *_type // element type
+    sendx    uint   // send index
+    recvx    uint   // receive index
+    recvq    waitq  // list of recv waiters
+    sendq    waitq  // list of send waiters
+    
+    lock mutex
+}
+```
+
+hchan：channel 数据结构
+
+- • qcount：当前 channel 中存在多少个元素；
+- • dataqsize: 当前 channel 能存放的元素容量；
+- • buf：channel 中用于存放元素的环形缓冲区；
+- • elemsize：channel 元素类型的大小；
+- • closed：标识 channel 是否关闭；
+- • elemtype：channel 元素类型；
+- • sendx：发送元素进入环形缓冲区的 index；
+- • recvx：接收元素所处的环形缓冲区的 index；
+- • recvq：因接收而陷入阻塞的协程队列；
+- • sendq：因发送而陷入阻塞的协程队列；
+
+##### 1.2 waitq
+
+```
+type waitq struct {
+    first *sudog
+    last  *sudog
+}
+```
+
+waitq：阻塞的协程队列
+
+- • first：队列头部
+- • last：队列尾部
+
+##### 1.3 sudog
+
+```
+type sudog struct {
+    g *g
+
+    next *sudog
+    prev *sudog
+    elem unsafe.Pointer // data element (may point to stack)
+
+    isSelect bool
+
+    c        *hchan 
+}
+```
+
+sudog：用于包装协程的节点
+
+- • g：goroutine，协程；
+- • next：队列中的下一个节点；
+- • prev：队列中的前一个节点；
+- • elem: 读取/写入 channel 的数据的容器;
+- • isSelect：标识当前协程是否处在 select 多路复用的流程中；
+- • c：标识与当前 sudog 交互的 chan.
+
+####  构造器函数
+
+![640 (1)](https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409191053106.webp)
+
+- • 判断申请内存空间大小是否越界，mem 大小为 element 类型大小与 element 个数相乘后得到，仅当无缓冲型 channel 时，因个数为 0 导致大小为 0；
+- • 根据类型，初始 channel，分为 无缓冲型、有缓冲元素为 struct 型、有缓冲元素为 pointer 型 channel;
+- • 倘若为无缓冲型，则仅申请一个大小为默认值 96 的空间；
+- • 如若有缓冲的 struct 型，则一次性分配好 96 + mem 大小的空间，并且调整 chan 的 buf 指向 mem 的起始位置；
+- • 倘若为有缓冲的 pointer 型，则分别申请 chan 和 buf 的空间，两者无需连续；
+- • 对 channel 的其余字段进行初始化，包括元素类型大小、元素类型、容量以及锁的初始化.
+
+#### 写流程
+
+#####  写流程整体串联
+
+<img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409191057865.webp" alt="640 (5)" style="zoom:50%;" />
+
+##### 3.1 两类异常情况处理
+
+- • 对于未初始化的 chan，写入操作会引发死锁；
+- • 对于已关闭的 chan，写入操作会引发 panic.
+
+#####  case1：写时存在阻塞读协程
+
+<img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409191055904.webp" alt="640 (2)" style="zoom:50%;" />
+
+- • 加锁；
+- • 从阻塞度协程队列中取出一个 goroutine 的封装对象 sudog；
+- • 在 send 方法中，会基于 memmove 方法，直接将元素拷贝交给 sudog 对应的 goroutine；
+- • 在 send 方法中会完成解锁动作.
+
+##### case2：写时无阻塞读协程但环形缓冲区仍有空间
+
+<img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409191056912.webp" alt="640 (3)" style="zoom:50%;" />
+
+- • 加锁；
+- • 将当前元素添加到环形缓冲区 sendx 对应的位置；
+- • sendx++;
+- • qcount++;
+- • 解锁，返回.
+
+##### case3：写时无阻塞读协程且环形缓冲区无空间
+
+<img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409191056039.webp" alt="640 (4)" style="zoom:50%;" />
+
+- • 加锁；
+- • 构造封装当前 goroutine 的 sudog 对象；
+- • 完成指针指向，建立 sudog、goroutine、channel 之间的指向关系；
+- • 把 sudog 添加到当前 channel 的阻塞写协程队列中；
+- • park 当前协程；
+- • 倘若协程从 park 中被唤醒，则回收 sudog（sudog能被唤醒，其对应的元素必然已经被读协程取走）；
+- • 解锁，返回
+
+
+
+
+
+
+
+#### 关闭
+
+1. • 关闭未初始化过的 channel 会 panic；
+2. • 加锁；
+3. • 重复关闭 channel 会 panic；
+4. • 将阻塞读协程队列中的协程节点统一添加到 glist；
+5. • 将阻塞写协程队列中的协程节点统一添加到 glist；
+6. • 唤醒 glist 当中的所有协程.
+7. 所有阻塞写协程会报panic错误（在写协程被唤醒时判断是因为close被唤醒的），阻塞读协程不会（给一个对应元素的零值），4/5不会同时发生
+
+<img src="https://raw.githubusercontent.com/lanyoumeng/Drawing-bed/main/docs/202409191023957.webp" alt="640" style="zoom:50%;" />
+
+
 
 ------
 
