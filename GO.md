@@ -86,6 +86,8 @@ go build -o myapp -v cmd/main.go
 
 fmt.Printf(" ", ) %v 就可以输出任意类型 // %+v 输出详细信息 %#v更详细 %.3f 保留小数点三位 %t bool类型 %T输出变量的类型 %p 指针
 
+
+
 ### 控制循环
 
 #### if
@@ -99,7 +101,7 @@ print("a<b")}
 
 #### switch - case
 
-1.不需要break
+1.**不需要break**
 
   可以不指定case表达式的值，且可以进行多条件判断。
 
@@ -145,6 +147,8 @@ The integer was <= 8
 
 5.switch 的 default 不论放在哪都是最后执行
 
+
+
 #### for
 
 ```Go
@@ -156,6 +160,173 @@ The integer was <= 8
 2.`map`的迭代顺序随机
 
 
+
+#### select
+
+在 Go 语言中，`select` 语句是一个用于处理多个通道操作的控制结构。它允许在多个通道（`channel`）之间进行选择，并且可以根据通道的状态执行不同的逻辑。`select` 的作用类似于 `switch` 语句，但它主要用于处理并发场景中的多通道通信，而不是条件判断。
+
+##### 1. **`select` 的基本概念**
+`select` 语句在 Go 中的作用是监听多个通道操作（包括通道的发送和接收操作），当其中一个通道操作可以进行时，它就会执行相应的 `case` 分支。`select` 主要用于协调 goroutine 之间的通信，能够避免阻塞，提升程序的并发性能。
+
+##### 2. **`select` 语法结构**
+`select` 的语法和 `switch` 类似，但是它只能用于处理通道（`channel`）的操作。基本语法如下：
+
+```go
+select {
+case <-channel1:
+    // 当从 channel1 中接收到数据时执行的代码块
+case channel2 <- value:
+    // 当向 channel2 发送数据时执行的代码块
+default:
+    // 当所有的 case 都不满足条件时执行（可选）
+}
+```
+
+- 每个 `case` 分支表示一个通道操作（接收或发送）。
+- 只有一个通道操作可以被执行时，`select` 会选择该通道，并执行对应的代码块。
+- 如果有多个 `case` 分支都可以执行，`select` 会**随机**选择一个进行处理。
+- 如果没有任何通道操作可以执行，并且存在 `default` 分支，则 `default` 会立即执行。
+- 如果没有 `default` 分支且所有通道都阻塞，则 `select` 本身也会阻塞，直到某个通道操作可以执行。
+
+##### 3. **`select` 示例**
+
+###### 3.1 基本示例：监听多个通道的接收
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+)
+
+func main() {
+    ch1 := make(chan string)
+    ch2 := make(chan string)
+
+    go func() {
+        time.Sleep(1 * time.Second)
+        ch1 <- "Hello from ch1"
+    }()
+
+    go func() {
+        time.Sleep(2 * time.Second)
+        ch2 <- "Hello from ch2"
+    }()
+
+    select {
+    case msg1 := <-ch1:
+        fmt.Println(msg1)  // 如果 ch1 先有数据，打印 ch1 的消息
+    case msg2 := <-ch2:
+        fmt.Println(msg2)  // 如果 ch2 先有数据，打印 ch2 的消息
+    case <-time.After(3 * time.Second):
+        fmt.Println("Timeout!")
+    }
+}
+```
+
+**输出结果：**
+```
+Hello from ch1
+```
+
+在这个例子中：
+- 两个 goroutine 分别向 `ch1` 和 `ch2` 发送数据，`ch1` 在 1 秒后发送，`ch2` 在 2 秒后发送。
+- `select` 语句会等待任意一个通道有数据可接收。
+- 因为 `ch1` 先接收到了数据，所以输出 `"Hello from ch1"`。
+- 如果两个通道都没有数据，并且超过 3 秒，则 `select` 会执行 `time.After` 返回的超时分支并输出 `"Timeout!"`。
+
+###### 3.2 示例：发送和接收操作
+```go
+package main
+
+import (
+    "fmt"
+)
+
+func main() {
+    ch := make(chan int)
+    done := make(chan bool)
+
+    // 向通道发送数据的 goroutine
+    go func() {
+        for i := 0; i < 5; i++ {
+            ch <- i
+        }
+        close(ch) // 关闭通道
+    }()
+
+    // 使用 select 语句接收通道的数据
+    go func() {
+        for {
+            select {
+            case val, ok := <-ch:
+                if !ok {
+                    done <- true // 当通道关闭时，跳出循环
+                    return
+                }
+                fmt.Println("Received:", val)
+            }
+        }
+    }()
+
+    <-done // 等待 goroutine 执行完毕
+}
+```
+
+**输出结果：**
+```
+Received: 0
+Received: 1
+Received: 2
+Received: 3
+Received: 4
+```
+
+在这个例子中：
+- 第一个 goroutine 向 `ch` 通道发送数据，并在发送完后关闭通道。
+- 第二个 goroutine 使用 `select` 语句监听 `ch` 通道，并在通道关闭时发送一个信号到 `done` 通道，结束程序。
+- `select` 用来选择 `ch` 的接收操作，当 `ch` 中有数据时执行 `case` 语句，当通道关闭时（`ok == false`）结束接收操作。
+
+##### 4. **`select` 的典型应用场景**
+
+###### 4.1 **通道的超时控制**
+使用 `select` 可以轻松地实现通道的超时控制。在网络请求或等待信号时，如果某个操作长时间没有响应，可以使用 `select` 和 `time.After` 来避免程序被永久阻塞。
+
+```go
+select {
+case msg := <-ch:
+    fmt.Println("Received:", msg)
+case <-time.After(2 * time.Second):
+    fmt.Println("Operation timed out!")
+}
+```
+
+在这个例子中，如果 `ch` 通道在 2 秒内没有接收到数据，则 `select` 会自动执行 `time.After` 分支，输出 `"Operation timed out!"`。
+
+###### 4.2 **多个通道之间的调度**
+当一个程序中有多个通道需要同时监听时，`select` 能够根据不同通道的状态，动态地选择一个准备好的通道进行处理。它特别适合用来实现任务的调度和优先级控制。
+
+```go
+select {
+case job := <-jobChannel:
+    fmt.Println("Received job:", job)
+case result := <-resultChannel:
+    fmt.Println("Received result:", result)
+default:
+    fmt.Println("No activity")
+}
+```
+
+如果 `jobChannel` 或 `resultChannel` 中的任一通道有数据，则优先处理该通道；如果都没有，则立即执行 `default` 分支输出 `"No activity"`。
+
+##### 5. **注意事项**
+- **`select` 不支持空的 `case` 语句**：每个 `case` 分支必须有具体的通道操作，不能仅仅是一个空的 `case` 语句。
+- **`select` 中的 `default` 分支是非阻塞的**：如果 `select` 中存在 `default` 分支，则 `select` 语句永远不会阻塞。它会立即执行 `default` 分支，即使其他 `case` 也没有准备好。
+- **`select` 的随机性**：如果多个通道同时准备好，`select` 会随机选择其中一个执行。因此，`select` 并不保证对多个通道的公平性。
+
+
+
+------
 
 
 
@@ -479,6 +650,177 @@ func main() {
 }
 ```
 
+
+
+### 空接口 (`interface{}`)
+
+#### 1. **空接口是什么**
+
+空接口是一个特殊的接口类型，定义如下：
+
+```go
+var i interface{}
+```
+
+在 Go 语言中，接口表示一组方法集合。空接口 (`interface{}`) 是 **没有任何方法约束** 的接口类型。因此，**所有类型都实现了空接口**，因为它不要求实现任何方法。
+
+#### 2. **空接口的特点**
+
+- **可以存储任意类型的值**：由于空接口没有任何方法约束，所以任何类型的值（包括自定义结构体、基本类型、数组、切片、函数等）都可以赋值给空接口类型的变量。
+- **类型断言和反射配合使用**：通过类型断言（`type assertion`）或反射（`reflect` 包）来判断空接口变量的具体类型。
+
+#### 3. **空接口的应用场景**
+
+- **通用类型参数**：在设计函数时，如果参数类型不确定，可以使用空接口。
+  
+  例如，一个可以接收任意类型参数的打印函数：
+
+  ```go
+  func PrintAny(a interface{}) {
+      fmt.Println(a)
+  }
+  ```
+
+- **数据类型的动态处理**：在需要处理不同数据类型的场景中（如 JSON 解码、配置解析），空接口可以用来接收动态数据类型。
+  
+  例如，JSON 数据解码时可以先解码到 `map[string]interface{}` 中：
+
+  ```go
+  var data map[string]interface{}
+  json.Unmarshal([]byte(jsonStr), &data)
+  ```
+
+- **类型断言和类型切换**：通过类型断言（`v, ok := i.(type)`）来获取接口内部存储的数据类型。
+
+  ```go
+  func Describe(i interface{}) {
+      switch v := i.(type) {
+      case string:
+          fmt.Println("The value is a string:", v)
+      case int:
+          fmt.Println("The value is an int:", v)
+      default:
+          fmt.Println("Unknown type")
+      }
+  }
+  ```
+
+#### 4. **类型断言**
+
+类型断言可以将 `interface{}` 还原为其原始类型。它的语法格式如下：
+
+```go
+value, ok := i.(T)  // i 是接口类型变量，T 是目标类型
+```
+
+- 如果断言成功，`value` 将是 `i` 的底层值，`ok` 为 `true`。
+- 如果断言失败，`value` 将是零值，`ok` 为 `false`。
+
+例如：
+
+```go
+func main() {
+    var i interface{} = "hello"
+    s, ok := i.(string)
+    if ok {
+        fmt.Println("String value:", s)
+    } else {
+        fmt.Println("Not a string")
+    }
+}
+```
+
+#### 5. **反射与空接口**
+
+反射可以获取接口类型的元信息，并对其进行操作。可以通过 `reflect.TypeOf()` 和 `reflect.ValueOf()` 获取接口的具体类型和值。
+
+例如：
+
+```go
+func main() {
+    var x interface{} = 3.14
+    fmt.Println("Type:", reflect.TypeOf(x))  // 输出：float64
+    fmt.Println("Value:", reflect.ValueOf(x)) // 输出：3.14
+}
+```
+
+#### 6. **注意事项**
+
+- 空接口会引入一定的 **性能开销**，因为 Go 需要存储类型信息和数据值。
+- 不建议在关键性能场景中频繁使用空接口和类型断言。
+
+### 空结构体 (`struct{}`)
+
+#### 1. **空结构体是什么**
+
+空结构体是指没有任何字段的结构体，定义如下：
+
+```go
+type Empty struct{}
+```
+
+空结构体本质上是一个大小为 **零字节（0-byte）** 的数据类型，因为它不包含任何字段，因此在内存中不占用实际空间。
+
+#### 2. **空结构体的特点**
+
+- **不占用内存**：因为空结构体没有字段，所以其实例不会消耗任何内存。
+- **用来表示一种状态或信号**：通常用于表示某种状态、行为或事件的存在，而不需要存储具体的数据。
+
+#### 3. **空结构体的应用场景**
+
+- **节省内存**：在需要大规模创建很多对象或元素时，使用空结构体可以节省大量内存。
+
+  例如，一个表示集合的 `map`，只需要使用 `struct{}` 作为值类型来表示某个键的存在，而不需要使用 `bool` 等其它类型：
+
+  ```go
+  // 使用空结构体节省内存
+  set := map[string]struct{}{"apple": {}, "banana": {}, "cherry": {}}
+  ```
+
+- **实现信号传递**：在使用 `channel` 传递数据时，可以用空结构体表示信号，而不是具体的数据值，从而节省内存。
+
+  ```go
+  done := make(chan struct{})
+  go func() {
+      // 执行一些操作
+      done <- struct{}{}  // 使用空结构体表示操作完成的信号
+  }()
+  <-done
+  ```
+
+- **实现功能标记**：空结构体经常用于结构体或函数标记，以表示某个特性或行为。
+
+- **同步机制**：在 `sync.Map` 或 `sync.Pool` 等同步数据结构中，使用 `struct{}` 作为标记来标识数据存储和操作行为。
+
+#### 4. **注意事项**
+
+虽然空结构体不占用内存空间，但其指针却会消耗内存，因此需要注意在设计数据结构时尽量使用值而非指针。
+
+三、空接口与空结构体的区别
+
+- **内存占用**：
+  - 空接口（`interface{}`）本身占用内存空间，因为它需要维护类型和值信息（通常是 16 字节：8 字节的类型信息指针 + 8 字节的数据指针）。
+  - 空结构体（`struct{}`）不占用任何内存（0 字节），仅表示某种状态或标记。
+
+- **使用目的**：
+  - 空接口用于 **表示任意类型的值**，方便泛型编程、动态数据处理和类型断言。
+  - 空结构体用于 **表示一种状态或信号**，多用于表示存在性、集合数据结构和信号传递。
+
+- **性能开销**：
+  - 使用空接口会引入 **类型断言和反射** 时的性能开销。
+  - 使用空结构体则没有这些开销，非常轻量。
+
+四、总结
+
+- **空接口 (`interface{}`)**：表示任意类型，广泛用于泛型函数和动态数据处理。
+- **空结构体 (`struct{}`)**：表示一种状态或存在性，常用于内存优化和信号传递场景。
+
+在实际项目中，合理使用空接口和空结构体可以提高代码的灵活性和性能。
+
+
+
+
+
 ### 指针
 
 nil 指针也称为空指针。
@@ -622,6 +964,8 @@ func main() {
 在上述示例中，`PrintValue` 函数接受一个参数类型为 `interface{}` 的值。在函数内部，我们可以将其直接打印出来。通过使用 `interface{}` 类型，可以接受不同类型的值作为参数，而不需要为每种类型编写不同的函数。
 
 需要注意的是，在使用 `interface{}` 时需要小心处理类型转换和类型断言，以确保操作的安全性和正确性。如果对具体类型的值进行错误的操作，可能会导致运行时错误。
+
+
 
 #### 3.实现保证
 
@@ -844,6 +1188,154 @@ func (uc *CommentUsecase) CommentList(ctx context.Context, videoId int64) ([]*pb
 }
 ```
 
+
+
+##### 底层实现
+
+`sync.WaitGroup` 是 Go 语言标准库中的一个用于管理并发任务的同步原语。它的主要功能是等待一组 goroutine 完成执行，从而可以控制并发任务的生命周期。理解其原理有助于在编写并发程序时更好地使用它，并避免常见的陷阱。
+
+###### 1. **WaitGroup 的核心概念**
+
+`WaitGroup` 主要通过以下三个方法来实现并发控制：
+
+- **`Add(delta int)`**：添加（或减少）等待的 goroutine 数量。`delta` 可以是正数或负数，用来增加或减少计数值。
+- **`Done()`**：减少等待的 goroutine 数量（相当于 `Add(-1)`）。一般在每个 goroutine 完成时调用。
+- **`Wait()`**：阻塞当前 goroutine，直到 `WaitGroup` 的计数值变为 0。通常用于主 goroutine 等待其他 goroutine 完成。
+
+###### 2. **WaitGroup 的数据结构**
+
+`sync.WaitGroup` 的核心数据结构如下（省略了一些实现细节）：
+
+```go
+type WaitGroup struct {
+    noCopy noCopy // 内部防止复制使用
+    state1 [12]byte // 保存计数和状态信息
+}
+```
+
+这里 `state1` 是一个长度为 12 字节的数组，它被分成 3 个部分：
+
+1. **Counter**（8 字节）：用于保存当前的计数值，表示等待的 goroutine 数量。
+2. **Waiter**（4 字节）：用于保存等待 `Wait` 的 goroutine 数量。
+3. **Semaphore**：内部信号量，用于协调 goroutine 的阻塞和唤醒。
+
+Go 的 `WaitGroup` 使用了 `atomic` 操作来确保在多核环境下的计数操作是原子的，从而避免竞争条件。
+
+###### 3. **WaitGroup 的内部原理**
+
+以下是 `WaitGroup` 各个方法的详细原理分析：
+
+**3.1 Add 方法**
+
+```go
+func (wg *WaitGroup) Add(delta int) {
+    statep, semap := wg.state()
+    state := atomic.AddUint64(statep, uint64(delta)<<32) // 将 delta 添加到计数器中
+    if int32(state>>32) < 0 {
+        panic("sync: negative WaitGroup counter") // 防止负计数器的出现
+    }
+    if int32(state>>32) == 0 && int32(state) > 0 {
+        runtime_Semrelease(semap, false, 0) // 当计数值为 0 时，释放信号量，唤醒等待的 goroutine
+    }
+}
+```
+
+- **`atomic.AddUint64(statep, uint64(delta)<<32)`**：通过原子操作更新 `Counter` 的值，确保并发环境下的安全性。
+- **状态检查**：如果 `Counter` 变为 0 并且存在 `Wait()` 的 goroutine，则释放信号量（`runtime_Semrelease`），以唤醒阻塞的 `Wait()`。
+
+**3.2 Done 方法**
+
+`Done()` 是 `Add(-1)` 的简写，当 goroutine 完成时调用，以表示当前 goroutine 已执行完毕，减少 `WaitGroup` 的计数。
+
+```go
+func (wg *WaitGroup) Done() {
+    wg.Add(-1)
+}
+```
+
+因此，`Done` 的内部逻辑与 `Add(-1)` 完全相同。
+
+**3.3 Wait 方法**
+
+`Wait()` 会阻塞当前 goroutine，直到 `Counter` 变为 0。实现原理如下：
+
+```go
+func (wg *WaitGroup) Wait() {
+    statep, semap := wg.state()
+    for {
+        state := atomic.LoadUint64(statep)
+        if int32(state>>32) == 0 { // 如果计数值为 0，则表示所有 goroutine 都已完成，直接返回
+            return
+        }
+        runtime_Semacquire(semap) // 阻塞等待其他 goroutine 完成
+    }
+}
+```
+
+- **`atomic.LoadUint64(statep)`**：读取当前 `WaitGroup` 的状态。
+- 如果 `Counter` 为 0，则所有 goroutine 都已完成，`Wait()` 直接返回。
+- 否则，通过信号量（`runtime_Semacquire`）阻塞当前 goroutine，等待其他 goroutine 完成并调用 `Done()`。
+
+###### 4. **WaitGroup 的工作流程图**
+
+1. **主 goroutine 调用 `wg.Add(n)`**：将等待的 goroutine 数量增加到 n。
+2. **启动 n 个子 goroutine**：每个子 goroutine 执行完毕后调用 `wg.Done()`，递减计数。
+3. **主 goroutine 调用 `wg.Wait()`**：等待所有子 goroutine 完成。
+4. **当计数值变为 0 时**：`wg.Wait()` 中的阻塞解除，主 goroutine 继续执行。
+
+###### 5. **WaitGroup 的使用场景**
+
+`WaitGroup` 主要用于以下场景：
+
+1. **等待多个 goroutine 完成**：如并发任务处理、批量爬虫、批量数据库查询等。
+2. **管理 goroutine 生命周期**：避免程序提前退出，确保主 goroutine 在子 goroutine 完成前不会结束。
+
+###### 6. **注意事项与常见错误**
+
+1. **计数为负的错误**：`WaitGroup` 计数不允许为负值。当调用 `Add` 时，如果 `delta` 过大或 `Done` 调用次数多于 `Add`，会导致负计数，触发 `panic`。
+  
+   ```go
+   var wg sync.WaitGroup
+   wg.Add(1)
+   wg.Done()
+   wg.Done() // 会引发 panic: sync: negative WaitGroup counter
+   ```
+
+2. **重复调用 `Wait` 的问题**：在 `WaitGroup` 计数还未归零时，不要重复调用 `Wait()`，否则会引起程序行为不一致。
+
+3. **确保 `Add` 调用在 goroutine 启动前**：如果在 goroutine 启动后才调用 `Add`，可能导致主 goroutine 提前进入 `Wait()` 状态，无法正确等待新启动的 goroutine。
+
+   ```go
+   var wg sync.WaitGroup
+   wg.Add(1)
+   go func() {
+       defer wg.Done()
+       // do some work
+   }()
+   wg.Wait() // 正常流程
+   ```
+
+4. **`WaitGroup` 不能复制使用**：如果 `WaitGroup` 被复制，则内部状态会丢失，导致同步逻辑错误。
+
+   ```go
+   var wg sync.WaitGroup
+   wg.Add(1)
+   wgCopy := wg  // 复制 WaitGroup
+   go func() {
+       defer wgCopy.Done() // 不会影响原始 wg 的状态
+   }()
+   wg.Wait() // 可能会导致永久阻塞
+   ```
+
+###### 7. **WaitGroup 与其他并发原语的对比**
+
+- **`sync.Mutex` 和 `sync.RWMutex`**：主要用于数据共享的锁定，而 `WaitGroup` 更适合用于等待一组任务完成。
+- **`channel`**：也可以用于等待多个任务完成，但 `WaitGroup` 使用更简洁，性能上开销较小。
+
+通过理解 `WaitGroup` 的原理，可以更有效地编写并发程序，避免一些常见的坑。如果在使用中遇到特定问题或有更深入的需求，可以进一步讨论。
+
+
+
 #### errgroup
 
 1.**和sync.map结合使用**
@@ -888,7 +1380,7 @@ func main() {
 }
 ```
 
-#### 区别与选择
+##### 区别与选择
 
 - **错误处理**：`sync.WaitGroup` 不提供错误处理机制，需要手动实现。如果需要处理并发任务中的错误，`errgroup` 是更好的选择。
 - **取消机制**：`errgroup` 结合 `context.Context`，提供了任务取消和超时控制机制，而 `sync.WaitGroup` 仅负责等待所有任务完成。
@@ -1698,6 +2190,106 @@ func InitSetting(FS embed.FS) {
 
 
 ## 数据类型
+
+### 字节数
+
+Go语言的基本数据类型有多种，不同的数据类型占用的字节数也各不相同。以下是常见数据类型及其所占字节数的详细信息：
+
+#### 1. 布尔类型
+- `bool`：占用1个字节，值为 `true` 或 `false`。
+
+#### 2. 整型类型
+- `int` 和 `uint`：
+  - 占用字节数依赖于系统架构（32位系统占4字节，64位系统占8字节）。
+  
+- 定长整型：
+  - `int8`：1字节，范围：`-128` 到 `127`
+  - `int16`：2字节，范围：`-32768` 到 `32767`
+  - `int32`：4字节，范围：`-2147483648` 到 `2147483647`
+  - `int64`：8字节，范围：`-9223372036854775808` 到 `9223372036854775807`
+  - `uint8`：1字节，范围：`0` 到 `255`（即 `byte` 类型）
+  - `uint16`：2字节，范围：`0` 到 `65535`
+  - `uint32`：4字节，范围：`0` 到 `4294967295`
+  - `uint64`：8字节，范围：`0` 到 `18446744073709551615`
+
+#### 3. 浮点数类型
+- `float32`：4字节，范围：约为 `1.18E-38` 到 `3.4E38`，精度为7位十进制数。
+- `float64`：8字节，范围：约为 `2.23E-308` 到 `1.8E308`，精度为15位十进制数。
+
+#### 4. 复数类型
+- `complex64`：8字节（实部和虚部分别为 `float32`）
+- `complex128`：16字节（实部和虚部分别为 `float64`）
+
+#### 5. 字符串类型
+- `string`：字符串在Go中是不可变的，底层结构包含一个指向字节数组的指针和一个长度值。占用的内存是字符串的长度（每个字符1字节）加上一个指针和长度字段（在64位系统上共16字节）。
+
+#### 6. 字符类型
+- `byte`：1字节，相当于 `uint8`。
+- `rune`：4字节，相当于 `int32`，用于表示单个Unicode字符。
+
+#### 7. 指针类型
+- `*T`：指针类型在64位系统中占8字节，32位系统中占4字节。
+
+#### 8. 切片（Slice）、映射（Map）、接口（Interface）
+这些类型的大小取决于其内部结构：
+- `slice`：底层数据结构占用24字节（包含指针、长度和容量）。
+- `map`：占用的字节数依赖于存储的数据，但基本结构的开销是约8字节。
+- `interface`：占用16字节（包含类型信息和指向数据的指针）。
+
+这些是Go语言中最常见的基础数据类型及其占用的字节数。不同系统架构下可能会有略微不同的表现。
+
+
+
+### string
+
+`string` 类型表示的是一段 **UTF-8 编码的字节序列**，不可变。具体来说，字符串一旦被创建，内容不能被修改。
+
+#### 特性
+1. **不可变性**：Go 的字符串是只读的，也就是说字符串内容不能被改变。如果需要对字符串进行修改，需要创建一个新的字符串。
+   
+2. **底层结构**：字符串本质上是一个字节数组（`[]byte`），其内部包含两个字段：
+   - **指向底层字节数组的指针**。
+   - **字符串的长度**。
+
+#### 内存占用
+字符串占用的内存包括：
+- **每个字符1个字节**（对于ASCII字符），即字符串中的字符数。
+- **字符串的指针和长度**字段，通常占用16个字节（在64位系统上）。
+
+#### 示例
+```go
+package main
+
+import "fmt"
+
+func main() {
+    var s string = "Hello, 世界"
+    fmt.Println(s)          // 输出: Hello, 世界
+    fmt.Println(len(s))     // 输出字符串的长度（以字节为单位），结果为13，因为'世'和'界'是多字节字符
+}
+```
+
+#### 其他操作
+- **字符串长度**：使用 `len(s)` 获取字符串的字节长度。
+- **字符串索引**：可以通过索引访问字符串中的字节（返回的是 `byte` 类型），但无法直接修改它。
+- **字符串遍历**：可以使用 `for range` 循环逐字符遍历字符串。
+
+遍历字符串
+
+```go
+for i, ch := range s {
+    fmt.Printf("字符 %c 在位置 %d\n", ch, i)
+}
+```
+该代码会按字符遍历字符串，并处理多字节字符。
+
+#### 字符串的转换
+- 将字符串转换为 `[]byte`（字节数组）：`[]byte(s)`
+- 将 `[]byte` 转换为字符串：`string(b)`
+
+总的来说，Go 中的 `string` 是一种高效的、不可变的字节序列，用于表示文本数据。
+
+
 
 ### map
 
@@ -5793,6 +6385,14 @@ func chanrecv2(c *hchan, elem unsafe.Pointer) (received bool) {
 
 
 
+
+
+### context
+
+context 是 golang 中的经典工具，主要在异步场景中用于实现并发协调以及对 goroutine 的生命周期控制. 除此之外，context 还兼有一定的数据存储能力. 
+
+
+
 ------
 
 
@@ -7965,20 +8565,6 @@ go tool pprof http://localhost:6060/debug/pprof/profile    #cpu排查
 通过这种方式，可以实现一个简单的分布式定时任务系统。如果任务复杂度较高或有更多需求，可以考虑使用专业的分布式任务调度系统，如 Apache Airflow、Kubernetes CronJobs 等。
 
 
-
-## 框架
-
-### web框架
-
-Hertz / Gin
-
-### ORM框架
-
-gorm / xorm
-
-### RPC框架
-
-kitex / gRPC /
 
 ## 包
 
@@ -10697,3 +11283,4 @@ hashmap、bitmap、大小根堆、快排、前缀树、分治
 📝面试官：短链服务有了解嘛？微博或者短信都有单条发送字数的限制，如果需要分享一个长网址，很容易越出限制，短链服务可以将长网址变成短网址，方便传播。请设计一个短链服务，要求短网址尽可能短，且保证系统安全和并发能力。
 
 📝面试官：假设现在有 N 台机器，M 个文件，文件可以以任意方式存放到任意机器上，文件可任意分割成若干块。假设这 N 台机器的宕机率小于 1/3，想在宕机时可以从其他未宕机的机器中完整导出这 M 个文件，给出你认为最好的存放与分割策略？
+
