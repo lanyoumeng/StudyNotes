@@ -8,7 +8,48 @@
 
 3. 结构体添加 to_json from_json
 
-6. 
+4. 原图、瓦片的小图
+
+   
+
+   1. 添加错误处理
+   2. tcmalloc、内存释放、析构函数
+   3. 
+
+5. ```go
+   func (p *ParasiteThick) WriteTxt(ctx *utility.Context) {
+       p.LastUpdateIndexTime = time.Now()
+       //z这里写入路径不一样，可以使用协程 优化
+       for labelType, labelData := range p.LabelDic {
+          
+          cellLabelTxtPath := path.Join(ImageROOT, fmt.Sprintf(CELL_LABEL_TXT_PATH, p.GlobalTaskId, ParasiteThickType, labelType))
+          if err := WriteLabelData(ctx, cellLabelTxtPath, labelData); err != nil {
+             utility.Errorf(ctx, "WriteTxt WriteLabelData err:%+v", err)
+             //continue
+          }
+          labelData.Sequence = []string{}
+          labelData.Data = map[string]string{}
+          p.LabelDic[labelType] = labelData
+       }
+   }
+   ```
+
+6. **捕获的生命周期问题**
+
+   如果 `imageByte` 是一个局部变量，而 Lambda 被异步运行（例如在线程池中调度），那么 `imageByte` 的生命周期可能在 Lambda 执行之前结束。这会导致 Lambda 捕获的引用变成悬空引用，访问时表现为未定义行为。
+
+   **解决方法**： 改用按值捕获来确保 `imageByte` 的生命周期在 Lambda 中有效：
+
+   ```
+   cpp复制代码image0.WriteRawImageDataWg.run([this, imageByte, fop, imageName] {
+       spdlog::info("WriteImageData begin 00000000 ,imageByte.size() = {}", imageByte.size());
+       image0.WriteImageData(fop, imageByte, imageName, image0.WhiteRawIndexesContent, image0.WhiteRawIndexesMux);
+   });
+   ```
+
+   > **注意**：按值捕获会拷贝 `imageByte`，这对大数据结构可能有性能影响，但可以确保数据独立性。
+
+7. 
 
    
 
