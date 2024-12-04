@@ -8,13 +8,7 @@
 
 3. 结构体添加 to_json from_json
 
-4. 原图、瓦片的小图
-
-   
-
-   1. 添加错误处理
-   2. tcmalloc、内存释放、析构函数
-   3. 
+4. 原图带索引、瓦片图带索引
 
 5. ```go
    func (p *ParasiteThick) WriteTxt(ctx *utility.Context) {
@@ -49,11 +43,151 @@
 
    > **注意**：按值捕获会拷贝 `imageByte`，这对大数据结构可能有性能影响，但可以确保数据独立性。
 
-7. 
+7. 添加错误处理
 
-   
+8. tcmalloc、内存释放、析构函数
 
-   
+9. 
+
+10. lamada捕获 引用
+
+11. 瓦片地图拼接完成后， 现有的原图片数据 删除？？？
+
+12. 瓦片地图拼接完成后，直接写入？？？
+
+13. TransportData的base64_encode取消
+
+14. 时序小图删除？？
+
+15. 去除const
+
+    
+
+    
+
+# CygnusSC
+
+Cygnus系列项目玻片地图和写入模块
+
+
+
+# 使用库
+
+```C++
+json:nlohmann-json #include <nlohmann/json.hpp>  using json = nlohmann::json;
+base64:cpp-base64
+redis:redis-plus-plus #include <sw/redis++/redis++.h>
+配置文件：yaml-cpp  #include <yaml-cpp/yaml.h> /  Boost.PropertyTree  <boost/property_tree/ini_parser.hpp>
+数据库：libpqxx
+opencv4
+网络：cpr
+日志：spdlog
+并发：oneTbb #include <oneapi/tbb/task_group.h>
+```
+
+# 玻片地图
+
+## 优化
+
+### 已完成
+
+1. 写入改为  pwrite  不用加锁
+
+### 待做
+
+1. opencv读取图片占用内存太大、  817.5KB的图片变为Mat是6.65MB  
+2. 图片处理  opencv 改为libjpeg
+   1. 时序图缩放、覆盖
+   2. 玻片地图缩放、拼接
+3. base64 剩写入瓦片时的转换
+4. 资源释放
+5. 玻片地图拼接    多线程、直接覆盖
+
+
+
+## 耗时
+
+10*184个图片
+
+读取图片到内存：转为Mat108.7S       转为Mat再转为byte 340S    直接读数据byte129
+
+所有：60S   
+
+只写入原图：47S  /  46S     20手
+
+只有  瓦片和时序图：53S
+
+只有瓦片：26S
+只有时序图：25S
+
+无功能：17s        
+
+无base64：9.6S
+
+只获取数据，不处理：9S
+
+一次时序图覆盖时间：
+
+一次原图写入时间：
+
+
+
+
+
+
+
+## 生成逻辑
+
+1.预扫描结束阶段：生成各层空白瓦片地图
+2.正式扫描阶段：
+图片不断传输，偶数行替换翻转（循环扫描）
+
+每次缩放到各层不同的大小填充不同瓦片的不同区域（每splitnum个图片为一个瓦片）
+每个瓦片全部填充完毕，内部各个小图片合成一张图片（瓦片）
+
+有边缘区域不足splitnum*splitnum张 ，使用空白图形填充
+当 最后一行瓦片某一个瓦片的真实图片数 已经填充完毕，开始拼接
+
+3.结束任务时，清理各层无需合成瓦片地图的数据
+
+
+
+# 写入模块
+
+标签计数
+调用接口停止硬件
+
+# 项目迁移
+
+1.CMakeLists.txt 文件中
+
+```
+# 指定 vcpkg 的安装路径
+set(CMAKE_PREFIX_PATH "/home/lanmengyou/code/c++/CygnusSC/vcpkg_installed/x64-linux/share")
+
+使用的是vcpkg的清单模式 --- 》vcpkg.json
+直接使用vcpkg install下载
+```
+
+2.vcpkg.json文件
+
+```
+"builtin-baseline" : "89f00b3b8611028566a5264afce725cdfdfddbb4",
+```
+
+3.signalImage.cpp
+
+```C++
+  ImageData imageData = GetOriginData("/home/lanmengyou/code/c++/CygnusSC1/raw");
+```
+
+4.Common.h
+
+```
+  inline std::string DracoCoreROOT = "/home/lanmengyou/code/c++/CygnusSC1/jpgs";
+```
+
+
 
 
 # 待学
@@ -70,6 +204,10 @@ std::bind/std::function 库
 其他的就是一些关键字的用法（override、final、delete），还有就是一些细节如可以像 Java 一样在类成员变量定义处给出初始化值。
 make_unique
 ```
+
+
+
+
 
 
 
