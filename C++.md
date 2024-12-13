@@ -61,6 +61,12 @@
 
 15. 去除const
 
+16. redis连接诶池有问题
+
+17. map不在存储Mat，改为字节数据，  到合成玻片时，再转为Mat处理
+
+18. 找一个库可以把 std::vector<std::vector<std::vector<uint8_t>>> image64  直接合并成一张大图片
+
     
 
     
@@ -68,8 +74,6 @@
 # CygnusSC
 
 Cygnus系列项目玻片地图和写入模块
-
-
 
 # 使用库
 
@@ -91,52 +95,111 @@ opencv4
 
 ### 已完成
 
-1. 写入改为  pwrite  不用加锁
+1. 写入改为 pwrite + 定时刷新到磁盘，并发在指定偏移量写入数据不用加锁
+
+2. 直接读取图片byte，不再通过Mat中转    
+
+   - opencv读取成Mat 图片占用内存太大、 817.5KB的图片变为Mat是6.65MB
+
+     导致处理时间倍增
+
+3. base64  只有写入瓦片时从Mat转为byte
+
+4. 瓦片拼接使用 cv::hconcat` 和 `cv::vconcat
+
+5. 
+
+   
 
 ### 待做
 
-1. opencv读取图片占用内存太大、  817.5KB的图片变为Mat是6.65MB  
-2. 图片处理  opencv 改为libjpeg
-   1. 时序图缩放、覆盖
-   2. 玻片地图缩放、拼接
-3. base64 剩写入瓦片时的转换
-4. 资源释放
-5. 玻片地图拼接    多线程、直接覆盖
+1. **libjpeg-turbo** 和 OpenCV 的 `cv::parallel_for_ `   /   \#pragma omp parallel for
 
+   1. 缩放、覆盖加速
+   2. 字节流转化为Mat 处理加速
 
+2. 资源释放
+
+3. 玻片地图拼接   多线程、直接覆盖
+
+4. 错误处理
+
+5. 注释
+
+6. Mat  引用优化
+
+7. 初始化时不再使用空白图形填充（申请内存），使用时再申请    
+
+   或者直接一个瓦片大图，缩放覆盖  （减少内存占用）
+
+   
+
+   
+
+   
+
+   
 
 ## 耗时
 
-10*184个图片
+  一共10*184个图片，不限制线程数：
 
-读取图片到内存：转为Mat108.7S       转为Mat再转为byte 340S    直接读数据byte129
+- 读取图片到内存： 126.375 s  ---------》 全部读取完再处理，内存占用大约4G
 
-所有：60S   
+- 所有图片处理的总耗时：13 s 、15s 、17s
 
-只写入原图：47S  /  46S     20手
+- 只写入原图数据：16s  
 
-只有  瓦片和时序图：53S
+- 只有 瓦片和时序图 处理：10s
 
-只有瓦片：26S
-只有时序图：25S
+- 只有瓦片：8s
+- 只有时序图：8s
+- 一次时序图覆盖时间：
 
-无功能：17s        
+- 一次原图写入时间：
 
-无base64：9.6S
-
-只获取数据，不处理：9S
-
-一次时序图覆盖时间：
-
-一次原图写入时间：
-
-
-
-
-
+| 例子         | 处理时间     | CPU占用  | 内存占用      | 文件刷新间隔 |
+| ------------ | ------------ | -------- | ------------- | ------------ |
+| 10*184(1.3G) | 13s          | 线程占满 | 4G            | 5s           |
+| 10*184(1.3G) | 9s 10s  6.5s | 线程占满 | 4G            | 3s           |
+|              |              |          |               |              |
+|              |              | 10线程   |               |              |
+| 10*184(1.3G) |              | 15线程   |               |              |
+|              |              | 20线程   |               |              |
+| 20*184(2.7G) | 14s  10.258s | 线程占满 | 19G-11.6=7.4G | 3S           |
+| 30*184(4G)   |              | 线程占满 | 19G-11.6=7.4G | 3S           |
 
 
-## 生成逻辑
+
+## 接收数据
+
+暂时从本地文件夹读取
+
+```C++
+  LoadAllImages("/home/xiaoying/project/CygnusSC/raw");
+
+//直接读取byte数据
+std::vector<uint8_t> imageByte = std::vector<uint8_t>(std::istreambuf_iterator<char>(std::ifstream(entry.path().string(), std::ios::binary).rdbuf()),
+                                                                std::istreambuf_iterator<char>());
+
+```
+
+
+
+## 图片处理
+
+1. 时序图缩放、覆盖
+
+   原图缩放到时序大图的目标区域
+
+2. 玻片地图缩放、拼接
+
+imwrite  最后写入时序大图使用
+imencode   耗时多0.15s        写入瓦片图时，将mat转为 vector<uint8_t>   
+
+imread，imwrite，imdecode和imencode
+
+## 玻片地图
 
 1.预扫描结束阶段：生成各层空白瓦片地图
 2.正式扫描阶段：
@@ -145,47 +208,83 @@ opencv4
 每次缩放到各层不同的大小填充不同瓦片的不同区域（每splitnum个图片为一个瓦片）
 每个瓦片全部填充完毕，内部各个小图片合成一张图片（瓦片）
 
-有边缘区域不足splitnum*splitnum张 ，使用空白图形填充
-当 最后一行瓦片某一个瓦片的真实图片数 已经填充完毕，开始拼接
+有边缘区域不足splitnum*splitnum张 ，保留之前的空白图形
+当 最后一行/列某一个瓦片的真实图片数 已经填充完毕，开始拼接
 
 3.结束任务时，清理各层无需合成瓦片地图的数据
 
 
 
+## 写入
+
+并发偏移写入+定时刷新到磁盘中
+
+```C++
+fp = open(fileName.c_str(), O_CREAT | O_RDWR, 0644);
+ssize_t bytes_written = pwrite(fp, data.data(), data.size(), offset);
+
+image0.fileSyncTimer->SetTask(1, std::chrono::seconds(syncInterval),
+                                [this] { image0.whiteRaw->FlushFile(); });
+```
+
 # 写入模块
+
+从python传来的数据，以图片为单位，包含算法识别后 该图片的细胞信息（序列号、类别、名称、细胞图片base64编码、停止判断 ），
+
+数据分为：
+
+1. 接受的数据
+2. 写入txt的数据
+3. dat
 
 标签计数
 调用接口停止硬件
 
+## 数据库
+
+1. CellWhiteCount需要查询whiteResult
+
+## 问题
+
+1. UpTaskStatus 要从redis中判断，删除
+2. 整理redis状态
+3. redispool 获取的连接记得释放
+4. 接口  get  哪种类型
+   1.  post  修改数据库
+
+
+
+
 # 项目迁移
 
-1.CMakeLists.txt 文件中
+1. CMakeLists.txt 文件中
 
-```
-# 指定 vcpkg 的安装路径
-set(CMAKE_PREFIX_PATH "/home/lanmengyou/code/c++/CygnusSC/vcpkg_installed/x64-linux/share")
+   ```
+   # 指定 vcpkg 的安装路径
+   set(CMAKE_PREFIX_PATH "/home/lanmengyou/code/c++/CygnusSC/vcpkg_installed/x64-linux/share")
+   
+   使用的是vcpkg的清单模式 --- 》vcpkg.json
+   直接使用vcpkg install下载
+   ```
 
-使用的是vcpkg的清单模式 --- 》vcpkg.json
-直接使用vcpkg install下载
-```
+2. signalImage.cpp  加载 图片路径
 
-2.vcpkg.json文件
+   ```C++
+     LoadAllImages("/home/xiaoying/project/CygnusSC/raw");
+   ```
 
-```
-"builtin-baseline" : "89f00b3b8611028566a5264afce725cdfdfddbb4",
-```
+3. Common.h    初始图片路径
 
-3.signalImage.cpp
+   ```C++
+     inline std::string DracoCoreROOT = "/home/xiaoying/project/CygnusSC/jpgs";
+   ```
 
-```C++
-  ImageData imageData = GetOriginData("/home/lanmengyou/code/c++/CygnusSC1/raw");
-```
+4. Server.cpp   任务id
 
-4.Common.h
+   ```C++
+   std::string stringTaskID = "3";
+   ```
 
-```
-  inline std::string DracoCoreROOT = "/home/lanmengyou/code/c++/CygnusSC1/jpgs";
-```
 
 
 
