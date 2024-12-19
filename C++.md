@@ -1,16 +1,6 @@
 # 问题
 
-
-
-1. 翻译为C++函数，只写函数
-
-2. 内存释放、、析构函数
-
-3. 结构体添加 to_json from_json
-
-4. 原图带索引、瓦片图带索引
-
-5. ```go
+1. ```go
    func (p *ParasiteThick) WriteTxt(ctx *utility.Context) {
        p.LastUpdateIndexTime = time.Now()
        //z这里写入路径不一样，可以使用协程 优化
@@ -28,7 +18,7 @@
    }
    ```
 
-6. **捕获的生命周期问题**
+2. **捕获的生命周期问题**
 
    如果 `imageByte` 是一个局部变量，而 Lambda 被异步运行（例如在线程池中调度），那么 `imageByte` 的生命周期可能在 Lambda 执行之前结束。这会导致 Lambda 捕获的引用变成悬空引用，访问时表现为未定义行为。
 
@@ -43,29 +33,29 @@
 
    > **注意**：按值捕获会拷贝 `imageByte`，这对大数据结构可能有性能影响，但可以确保数据独立性。
 
-7. 添加错误处理
+3. 添加错误处理
 
-8. tcmalloc、内存释放、析构函数
+4. tcmalloc、内存释放、析构函数
 
-9. 
+5. lamada捕获 引用
 
-10. lamada捕获 引用
+6. map不在存储Mat，改为字节数据，  到合成玻片时，再转为Mat处理---这个太慢，因为原来是一次转换五次使用，变为了五次转换五次使用
 
-11. 瓦片地图拼接完成后， 现有的原图片数据 删除？？？
+7. 找一个库可以把 std::vector<std::vector<std::vector<uint8_t>>> image64  直接合并成一张大图片
 
-12. 瓦片地图拼接完成后，直接写入？？？
+8. pprof 和火焰图和内存分析
 
-13. TransportData的base64_encode取消
+9. -lprofiler -ltcmalloc   
 
-14. 时序小图删除？？
+10. 
 
-15. 去除const
+11. 部分task没加锁
 
-16. redis连接诶池有问题
+12. 
 
-17. map不在存储Mat，改为字节数据，  到合成玻片时，再转为Mat处理
+13. 玻片地图模块每次
 
-18. 找一个库可以把 std::vector<std::vector<std::vector<uint8_t>>> image64  直接合并成一张大图片
+14. 更新http 的url   接口所有字段都要
 
     
 
@@ -246,11 +236,10 @@ image0.fileSyncTimer->SetTask(1, std::chrono::seconds(syncInterval),
 
 ## 问题
 
-1. UpTaskStatus 要从redis中判断，删除
-2. 整理redis状态
+2. 整理redis状态    
 3. redispool 获取的连接记得释放
-4. 接口  get  哪种类型
-   1.  post  修改数据库
+3. python对应接口开发
+4. 写入字段再和钉钉文档对比一下
 
 
 
