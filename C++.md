@@ -57,6 +57,12 @@
 
 14. 更新http 的url   接口所有字段都要
 
+15. upload_status 在finishscan 和 stoptask 中，未更新
+
+    concentrationcalculate 注释掉了疟疾代码
+
+16. 标注系统 的 gettaskuploadstatus 需要更新
+
     
 
     
@@ -64,6 +70,12 @@
 # CygnusSC
 
 Cygnus系列项目玻片地图和写入模块
+
+# 任务管理
+
+写入模块：只有程序异常结束时才会 设为Failture
+
+
 
 # 使用库
 
