@@ -1,4 +1,4 @@
-# 问题
+# 注意
 
 1. ```go
    func (p *ParasiteThick) WriteTxt(ctx *utility.Context) {
@@ -33,191 +33,334 @@
 
    > **注意**：按值捕获会拷贝 `imageByte`，这对大数据结构可能有性能影响，但可以确保数据独立性。
 
-3. 添加错误处理
+   
 
-4. tcmalloc、内存释放、析构函数
+   
 
-5. lamada捕获 引用
+3. map不在存储Mat，改为字节数据，  到合成玻片时，再转为Mat处理---这个太慢，因为原来是一次转换五次使用，变为了五次转换五次使用
 
-6. map不在存储Mat，改为字节数据，  到合成玻片时，再转为Mat处理---这个太慢，因为原来是一次转换五次使用，变为了五次转换五次使用
+4. 找一个库可以把 std::vector<std::vector<std::vector<uint8_t>>> image64  直接合并成一张大图片
 
-7. 找一个库可以把 std::vector<std::vector<std::vector<uint8_t>>> image64  直接合并成一张大图片
+# 问题
 
-8. pprof 和火焰图和内存分析
+1. pprof 和火焰图和内存分析
 
-9. -lprofiler -ltcmalloc   
+   -lprofiler -ltcmalloc   性能分析
 
-10. 
+2. 部分task没加锁
 
-11. 部分task没加锁
+3. 标注系统 的 get taskuploadstatus 需要更新
 
-12. 
+4. redispool 获取的连接记得释放
 
-13. 玻片地图模块每次
 
-14. 更新http 的url   接口所有字段都要
 
-15. upload_status 在finishscan 和 stoptask 中，未更新
+1. model_type在数据库中没存，下位机是在TransportData阶段传过来，那么FinishPrescan阶段初始化瓦片地图只能所有都初始化
 
-    concentrationcalculate 注释掉了疟疾代码
+2. 
 
-16. 标注系统 的 gettaskuploadstatus 需要更新
+3. json转换问题
 
-    
+4. 更新版本go代码
 
-    
+5. 添加一个读取指定图片的接口
+
+6. 单例日志
+
+7. c++先写文档
+
+8. 骨髓的配置文件有更改，c++注意
+
+9. upstatus 更改
+
+10. cli 释放
+
+11. 
+
+
+
+# 骨髓模块
+
+### 写入模块新增
+
+1. 获取数据的rediskey： BoneMarrowKey = "hdf5_bone_marrow_info_dic"
+
+2. 数据库 
+
+   bone_marrow
+
+   | id   | task_id | bone_marrow_result |      |
+   | ---- | ------- | ------------------ | ---- |
+
+   
+
+3. ModelType  :  "BoneMarrow"
+
+4. 计数规则：不以UNStretcging开头且不再排除的标签数组中
+
+5. 发送停止信号到硬件---更新 
+
+   ```go
+   // 发送停止信号到硬件
+   if err = utility.StopHardWare(ctx, task.Id, "ReachBoneMarrowModuleLimit", common.WhiteModelType, p.Stopped); err != nil {
+       utility.Errorf(ctx, "LabelCategoryDic StopScan err:%+v", err)
+   }
+   
+   ```
+
+6. ```go
+   type ScanMode struct {
+       ScanParameter struct {
+          PlateletCount   int json:"platelet_count"
+          RedCount        int json:"red_count"
+          WhiteCount      int json:"white_count"       
+          BoneMarrowCount int json:"bone_marrow_count" //骨髓细胞个数目标值 新增
+       } json:"scan_parameter"
+       ScanRegion common.ScanRegionStructNew json:"scan_region"
+       ScanType   string                     json:"scan_type"
+   }
+   ```
+
+   
+
+7. 配置文件新增
+
+   1. ```yaml
+      BoneMarrow:
+        CellBoneMarrowThreshold: 10000 #骨髓細胞閾值
+      ```
+
+8. 进度 = 当前骨髓细胞 / 目标数量
+
+9. 任务状态更新：p.Process.SFStatus.BoneMarrow = true    任务成功
+
+
+
+### 玻片地图新增
+
+1. 原图 和瓦片 文件操作对象
+
+2. 原图索引实时发送至redis   key : boneMarrowRawImage
+
+3. 新增 传输字段
+
+   boneMarrowRowsColsStr := data[7]   //骨髓行列数
+
+   数据库rows_cols 字段    新增
+
+   ```go
+   BoneMarrowRows int json:"bone_marrow_rows"
+   BoneMarrowCols int json:"bone_marrow_cols"
+   ```
+
+4. 当没有算法模块时候，进度条更新
+
+   inNum = (row-1)*p.Info.BoneMarrowCols + col
+
+   all = p.Info.BoneMarrowRows * p.Info.BoneMarrowCols
+
+   progress := float64(inNum) / float64(all) * 100
+
+5. 有时序图生成，写入时序图是 White.SequenceChart  控制
+
+6. 根据传过来的图片的模型类别向相应的算法模块传输图片及其信息
+
+   1. ```go
+      if y%2 != 0 {
+          _, err = cli.Do("lpush", "boneMarrowModelData1", modelJsonData)
+      } else {
+          _, err = cli.Do("lpush", "boneMarrowModelData2", modelJsonData)
+      }
+      ```
+
+      
+
+7. 写入原图和瓦片索引文件 ， StopTask阶段 清理骨髓索引
+
+8. ScanRegion  新增 BoneMarrowRegion 字段
+
+9. 
+
+
+
+
+
+
 
 # CygnusSC
 
 Cygnus系列项目玻片地图和写入模块
 
-# 任务管理
+# 任务状态
 
-写入模块：只有程序异常结束时才会 设为Failture
+写入模块：
+
+1. UnNormalStopTask：程序异常结束时将Active任务设为Failure
+
+2. Process 的 UpTaskStatus  满足条件，设task为Success
+   1. Thin Thick  ThinCount  ThickCount 完成
+   2. conf.GlobalConf.System.NueJiZhiKong 和 p.SFStatus.TaskFinish1
+   3. p.SFStatus.TaskFinish1 和  conf.GlobalConf.System.CAlgorithm   //c++算法质控
+   4. p.SFStatus.TaskFinish1 && p.SFStatus.TaskFinish2  //两个算法质控
+   5. conf.GlobalConf.System.CAlgorithm 和   White1 && Red1 && Red2 && Platelet
+   6. !conf.GlobalConf.System.CAlgorithm 和 White1 && White2 && Red1 && Red2 && Platelet 
+   7. BoneMarrow   
+
+3. 结束扫描时，没有算法模块：设task为Success
+
+4. 白细胞个数达到目标值，停止扫描 
+   1. 发送停止信号到硬件
+   2. 发送停止信号到拼接模块
+
+   
 
 
+玻片地图：
+
+1.  结束预扫描：设为Active
+2.  传输预扫描数据：设为PreScan
+3.  StopTask时，设为Failure
+4.  扫描结束，更新扫描区域 ，发送停止相应算法模型信号 redis
 
 # 使用库
 
 ```C++
 json:nlohmann-json #include <nlohmann/json.hpp>  using json = nlohmann::json;
-base64:cpp-base64
+base64:turbo-base64
 redis:redis-plus-plus #include <sw/redis++/redis++.h>
-配置文件：yaml-cpp  #include <yaml-cpp/yaml.h> /  Boost.PropertyTree  <boost/property_tree/ini_parser.hpp>
+配置文件：yaml-cpp 	 #include <yaml-cpp/yaml.h> /  
+    	config.ini	 Boost.PropertyTree  <boost/property_tree/ini_parser.hpp>
 数据库：libpqxx
-opencv4
+图片处理：opencv4  libjpeg-turbo
 网络：cpr
 日志：spdlog
-并发：oneTbb #include <oneapi/tbb/task_group.h>
+线程池：oneTbb #include <oneapi/tbb/task_group.h>
+性能分析：gperftools
 ```
 
 # 玻片地图
 
-## 优化
+## 性能测试
 
-### 已完成
+```
+机器配置
+内存：32G
+CPU：Intel® Xeon(R) Silver 4214R CPU @ 2.40GHz × 48 
+磁盘容量：4.5 TB
+操作系统：Ubuntu 20.04.5 LTS
 
-1. 写入改为 pwrite + 定时刷新到磁盘，并发在指定偏移量写入数据不用加锁
+函数耗时：
+初始化玻片地图：0.01913s
+imread:  0.0737s   0.1s   只有一次，初始化时读取白图像
+imwrite ：0.11 0.12   只有一次  ，写入序列图
+ImageAll函数，resize耗时 : 0.00034139
+ImageAll函数--UpdateImage，copyTo耗时 : 0.00065458
+每个瓦片合并时间：0.005  0.011
+base64_decode（新加） : 0.025   0.020  0.0479
 
-2. 直接读取图片byte，不再通过Mat中转    
+imdecode   0.15  0.20  0.22 已改为libjpeg-turbo： 0.101544435  0.078196477   0.084153755
+imencode  0.15  0.17 0.20  
+```
 
-   - opencv读取成Mat 图片占用内存太大、 817.5KB的图片变为Mat是6.65MB
+  
 
-     导致处理时间倍增
+| 图片数       | 处理时间 | CPU占用        | 内存占用       | 文件刷新间隔 | fps    |
+| ------------ | -------- | -------------- | -------------- | ------------ | ------ |
+| 10*184(1.3G) | 14.213   | 48线程（所有） | 18.1-15.7=2.4G | 1s           | 129.16 |
+| 10*184(1.3G) | 13.472   | 48线程（所有） | 18.4-16=2.4G   | 1s           | 136.5  |
+|              |          |                |                |              |        |
+| 10*184(1.3G) | 15.32    | 15线程         |                | 1s           | 120    |
+| 10*184(1.3G) | 15.43    | 15线程         | 18.5-16.4=2.1G | 1s           | 119    |
+| 10*184(1.3G) | 16.489   | 13线程         | 18.8-16.7=2.1  | 1s           | 111.59 |
+| 10*184(1.3G) | 21.98    | 8线程          | 15.1-12.9=2.2  | 1s           | 83.7   |
+|              |          |                |                |              |        |
+|              |          |                |                |              |        |
+| 30*184(4G)   |          | 48线程（所有） |                | 1S           |        |
+| 30*184(4G)   | 43.575   | 15线程         | 22.6-17.1=5.5  | 1S           | 126    |
+| 30*184(4G)   | 47.443   | 12线程         |                | 1S           | 116    |
+| 30*184(4G)   | 55.382   | 10线程         | 17.8-12.5=5.4  | 1S           | 100    |
 
-3. base64  只有写入瓦片时从Mat转为byte
 
-4. 瓦片拼接使用 cv::hconcat` 和 `cv::vconcat
 
-5. 
+一共10*184个图片，不限制线程数：
 
-   
+- 读取图片到内存： 
 
-### 待做
+- 所有图片处理的总耗时：
 
-1. **libjpeg-turbo** 和 OpenCV 的 `cv::parallel_for_ `   /   \#pragma omp parallel for
+- 只写入原图数据：
 
-   1. 缩放、覆盖加速
-   2. 字节流转化为Mat 处理加速
+- 只有 瓦片和时序图 处理：
 
-2. 资源释放
+- 只有瓦片：
 
-3. 玻片地图拼接   多线程、直接覆盖
+- 只有时序图：
 
-4. 错误处理
-
-5. 注释
-
-6. Mat  引用优化
-
-7. 初始化时不再使用空白图形填充（申请内存），使用时再申请    
-
-   或者直接一个瓦片大图，缩放覆盖  （减少内存占用）
-
-   
-
-   
-
-   
-
-   
-
-## 耗时
-
-  一共10*184个图片，不限制线程数：
-
-- 读取图片到内存： 126.375 s  ---------》 全部读取完再处理，内存占用大约4G
-
-- 所有图片处理的总耗时：13 s 、15s 、17s
-
-- 只写入原图数据：16s  
-
-- 只有 瓦片和时序图 处理：10s
-
-- 只有瓦片：8s
-- 只有时序图：8s
 - 一次时序图覆盖时间：
 
 - 一次原图写入时间：
 
-| 例子         | 处理时间     | CPU占用  | 内存占用      | 文件刷新间隔 |
-| ------------ | ------------ | -------- | ------------- | ------------ |
-| 10*184(1.3G) | 13s          | 线程占满 | 4G            | 5s           |
-| 10*184(1.3G) | 9s 10s  6.5s | 线程占满 | 4G            | 3s           |
-|              |              |          |               |              |
-|              |              | 10线程   |               |              |
-| 10*184(1.3G) |              | 15线程   |               |              |
-|              |              | 20线程   |               |              |
-| 20*184(2.7G) | 14s  10.258s | 线程占满 | 19G-11.6=7.4G | 3S           |
-| 30*184(4G)   |              | 线程占满 | 19G-11.6=7.4G | 3S           |
-
-
+  
 
 ## 接收数据
 
-暂时从本地文件夹读取
-
-```C++
-  LoadAllImages("/home/xiaoying/project/CygnusSC/raw");
-
-//直接读取byte数据
-std::vector<uint8_t> imageByte = std::vector<uint8_t>(std::istreambuf_iterator<char>(std::ifstream(entry.path().string(), std::ios::binary).rdbuf()),
-                                                                std::istreambuf_iterator<char>());
-
-```
+1. 从本地文件夹读取
+2. redis中获取
+3. 函数调用
 
 
 
 ## 图片处理
 
-1. 时序图缩放、覆盖
-
-   原图缩放到时序大图的目标区域
-
-2. 玻片地图缩放、拼接
-
-imwrite  最后写入时序大图使用
-imencode   耗时多0.15s        写入瓦片图时，将mat转为 vector<uint8_t>   
-
-imread，imwrite，imdecode和imencode
-
-## 玻片地图
-
-1.预扫描结束阶段：生成各层空白瓦片地图
-2.正式扫描阶段：
-图片不断传输，偶数行替换翻转（循环扫描）
-
-每次缩放到各层不同的大小填充不同瓦片的不同区域（每splitnum个图片为一个瓦片）
-每个瓦片全部填充完毕，内部各个小图片合成一张图片（瓦片）
-
-有边缘区域不足splitnum*splitnum张 ，保留之前的空白图形
-当 最后一行/列某一个瓦片的真实图片数 已经填充完毕，开始拼接
-
-3.结束任务时，清理各层无需合成瓦片地图的数据
+- opencv读取成Mat 图片占用内存大，817.5KB的图片变为Mat是6.65MB
+- 红和血小板公用一套图片
+  //血小板数据无需处理,直接通知下位机成功
+- 
 
 
 
-## 写入
+
+### 时序图
+
+1. 初始化时序大图 -- 整个空白图像
+
+2. 每次接收一个图片数据缩放覆盖到时序大图的目标区域
+
+   
+
+### 玻片地图
+
+1. 预扫描结束阶段：生成各层空白瓦片地图
+
+2. 正式扫描阶段：
+   不断接收图片数据，偶数行替换翻转（循环扫描）
+
+   每次缩放填充到各层不同瓦片的不同区域（每splitnum个图片为一个瓦片）
+   每个瓦片全部填充完毕，合成一张图片（瓦片）
+
+3. 有边缘区域不足splitnum*splitnum张 ，保留之前的空白图形
+   当 最后一行/列某一个瓦片的真实图片数 已经填充完毕，开始拼接
+
+4. 结束任务时，清理各层无需合成瓦片地图的数据
+
+瓦片拼接使用 cv::hconcat` 和 `cv::vconcat
+
+| level | splitnum |      |
+| ----- | -------- | ---- |
+| 1     | 8        |      |
+| 2     | 64       |      |
+| 3     | 1        |      |
+| 7     | 4        |      |
+| 8     | 2        |      |
+|       |          |      |
+
+
+
+### 通过redis向算法推送图片数据
+
+
+
+## 数据写入
 
 并发偏移写入+定时刷新到磁盘中
 
@@ -237,26 +380,28 @@ image0.fileSyncTimer->SetTask(1, std::chrono::seconds(syncInterval),
 
 1. 接受的数据
 2. 写入txt的数据
-3. dat
+3. 图片dat
 
 标签计数
 调用接口停止硬件
 
-## 数据库
 
-1. CellWhiteCount需要查询whiteResult
 
-## 问题
+## 白模块
 
-2. 整理redis状态    
-3. redispool 获取的连接记得释放
-3. python对应接口开发
-4. 写入字段再和钉钉文档对比一下
+计数扫描发送停止信号
 
+
+
+## 红模块
+
+算法后处理
 
 
 
 # 项目迁移
+
+## 项目文件修改
 
 1. CMakeLists.txt 文件中
 
@@ -280,13 +425,68 @@ image0.fileSyncTimer->SetTask(1, std::chrono::seconds(syncInterval),
      inline std::string DracoCoreROOT = "/home/xiaoying/project/CygnusSC/jpgs";
    ```
 
-4. Server.cpp   任务id
-
-   ```C++
-   std::string stringTaskID = "3";
-   ```
 
 
+
+## 依赖下载
+
+```C++
+//1.vcpkg下载
+sudo apt-get update
+sudo apt-get install git cmake build-essential -y
+git clone https://github.com/microsoft/vcpkg.git
+// git clone https://gitee.com/mirrors/vcpkg.git
+cd vcpkg
+./bootstrap-vcpkg.sh
+// 复制本地 vcpkg 下载缓存（如果存在）   已经下好的压缩包
+cp -r ./downloads /path-to/vcpkg/downloads
+echo "export PATH=\$PATH:$(pwd)" >> ~/.bashrc
+source ~/.bashrc
+// 将 vcpkg 工具链文件集成到项目中，添加以下内容到 CMake 配置：
+// 替换 /path/to/vcpkg 为实际的 vcpkg 路径
+set(CMAKE_TOOLCHAIN_FILE /path/to/vcpkg/scripts/buildsystems/vcpkg.cmake CACHE STRING "vcpkg toolchain file")
+
+  
+// 2.或者使用clion 
+view->Tool Windows->Vcpkg 
+点击 + (add vcpkg)
+
+//3.
+sudo apt-get update && sudo apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    zip \
+    unzip \
+    tar \
+    bison \
+    flex \
+    autoconf \
+    libx11-dev \
+    libxft-dev \
+    libxext-dev \
+    python3 \
+    python3-pip \
+    ninja-build \
+    pkg-config \
+    liblz4-dev \
+    libzstd-dev \
+    liblzma-dev \
+    xz-utils \
+    libtool \
+    libxtst-dev \
+    libssl-dev \
+    libsystemd-dev \
+    libgtk-3-dev
+
+sudo pip3 install jinja2
+
+  
+// 在项目目录下（vcpkg.json） 执行
+vcpkg install
+```
 
 
 
