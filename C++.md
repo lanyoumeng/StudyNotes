@@ -1,3 +1,15 @@
+
+
+# 排期
+
+与下位机进行联调
+
+Q1:小x  整体架构调整  C++\算法
+
+
+
+
+
 # 注意
 
 1. ```go
@@ -56,26 +68,19 @@
 
 
 1. model_type在数据库中没存，下位机是在TransportData阶段传过来，那么FinishPrescan阶段初始化瓦片地图只能所有都初始化
-
 2. 
-
-3. json转换问题
-
-4. 更新版本go代码
-
-5. 添加一个读取指定图片的接口
-
-6. 单例日志
-
-7. c++先写文档
-
-8. 骨髓的配置文件有更改，c++注意
-
-9. upstatus 更改
-
-10. cli 释放
-
-11. 
+3. 更新版本go代码
+4. 添加一个读取指定图片的接口
+5. 单例日志
+6. c++先写文档
+7. cli 释放
+8. 
+9. json转换问题
+10. 血小板模块循环图片写入 使用多线程
+11. 疟疾数据库接口和字段
+12. python返回的白结果 类型可能不完全
+13. `std::unordered_map`代替`std::map`）。 
+14. std::vector<std::string> 替换为 std::unordered_set<std::string>   注意有些会有重复值使用unordered_multiset
 
 
 
@@ -209,7 +214,7 @@ Cygnus系列项目玻片地图和写入模块
 3. 结束扫描时，没有算法模块：设task为Success
 
 4. 白细胞个数达到目标值，停止扫描 
-   1. 发送停止信号到硬件
+   1. 发送停止信号到硬件 通过http接口
    2. 发送停止信号到拼接模块
 
    
@@ -236,6 +241,7 @@ redis:redis-plus-plus #include <sw/redis++/redis++.h>
 日志：spdlog
 线程池：oneTbb #include <oneapi/tbb/task_group.h>
 性能分析：gperftools
+http测试：catch2
 ```
 
 # 玻片地图
@@ -391,6 +397,30 @@ image0.fileSyncTimer->SetTask(1, std::chrono::seconds(syncInterval),
 
 计数扫描发送停止信号
 
+`white_v16.cpp` 文件的处理逻辑如下：
+
+1. **WriteTxt 方法**：该方法将 `labelDic` 中的数据写入对应的 txt 文件。它遍历 `labelDic`，根据标签类型确定文件路径，然后调用 `WriteLabelData` 方法写入数据。如果写入失败，会记录错误日志。
+
+2. **Start 方法**：该方法启动for循环，从 Redis 中获取数据并调用 `Handle` 方法处理数据。。根据配置决定使用 C++ 版本算法还是其他版本算法，
+
+3. **Handle 方法**：该方法处理 `CellAnalysisRs` 对象的数据。它会根据任务状态和数据内容更新任务结构，写入数据，并根据条件决定是否停止任务。处理过程中会调用 `LabelCategoryDic` 方法更新标签字典，并调用 `WriteTxt` 方法写入数据。
+
+4. **LabelCategoryDic 方法**：该方法更新标签字典。它获取白细胞和血小板的结果，根据任务的扫描模式和标签类型更新进度，并在达到目标值时停止扫描。
+
+5. **ModuleTypeResult 方法**：该方法查询并解析任务的结果，根据模块类型返回结果的字典。
+
+6. **CountCell 方法**：该方法计算白细胞的数量，根据任务结果和标签类型统计细胞数量。
+
+7. **WriteBase64Image 方法**：该方法将 Base64 编码的图像写入指定目录，并更新 `labelDic`。它会根据标签类型确定文件路径，解码并写入图像，然后更新标签字典。
+
+8. **StopScan 方法**：该方法发送停止扫描的请求，返回响应文本。
+
+9. **CellWhiteCount 方法**：该方法查询并计算白细胞的数量，返回总数。
+
+10. **DelPicByCellCount 方法**：该方法根据白细胞数量删除图片。当白细胞数量超过阈值时，它会清理 Redis 中的模型数据列表。
+
+共同实现了白细胞数据的处理、存储和任务管理。
+
 
 
 ## 红模块
@@ -449,7 +479,7 @@ set(CMAKE_TOOLCHAIN_FILE /path/to/vcpkg/scripts/buildsystems/vcpkg.cmake CACHE S
   
 // 2.或者使用clion 
 view->Tool Windows->Vcpkg 
-点击 + (add vcpkg)
+点击 + (add vcpkg)  选择vcpkg安装目录，勾选 将vcpkg 集成添加到现有 CMake 配置文件
 
 //3.
 sudo apt-get update && sudo apt-get install -y \
@@ -482,10 +512,16 @@ sudo apt-get update && sudo apt-get install -y \
     libgtk-3-dev
 
 sudo pip3 install jinja2
+sudo apt upgrade openssl libssl-dev
 
   
 // 在项目目录下（vcpkg.json） 执行
 vcpkg install
+    
+    
+# 在CMakeLists.txt   指定 vcpkg 的下载路径
+set(VCPKG_INSTALLED_DIR "/home/xiaoying/project/CygnusSC/vcpkg_installed")
+set(CMAKE_PREFIX_PATH "/home/xiaoying/project/CygnusSC/vcpkg_installed/x64-linux/share")
 ```
 
 
@@ -3361,6 +3397,11 @@ int main()
 ```
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
+
+// 序列化 将一个结构体对象（如 ScanMode）转换为 JSON 字符串
+std::string bs = json(scanMode).dump();
+// string--->结构体
+json::parse(stepNumberStr).get_to(stepNumber);
 ```
 
 对于 `ScanRegionStructNew` 结构体，它包含多个 `std::vector<int>` 类型的成员，使用 `nlohmann::json` 进行 JSON 序列化和反序列化时，我们需要为这个结构体提供适当的 `to_json` 和 `from_json` 函数。这将允许 JSON 库将 JSON 数据正确地映射到 `ScanRegionStructNew` 的成员。
