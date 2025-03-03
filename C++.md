@@ -1,15 +1,3 @@
-
-
-# 排期
-
-与下位机进行联调
-
-Q1:小x  整体架构调整  C++\算法
-
-
-
-
-
 # 注意
 
 1. ```go
@@ -47,11 +35,6 @@ Q1:小x  整体架构调整  C++\算法
 
    
 
-   
-
-3. map不在存储Mat，改为字节数据，  到合成玻片时，再转为Mat处理---这个太慢，因为原来是一次转换五次使用，变为了五次转换五次使用
-
-4. 找一个库可以把 std::vector<std::vector<std::vector<uint8_t>>> image64  直接合并成一张大图片
 
 # 问题
 
@@ -61,26 +44,65 @@ Q1:小x  整体架构调整  C++\算法
 
 2. 部分task没加锁
 
-3. 标注系统 的 get taskuploadstatus 需要更新
+3. redispool 获取的连接记得释放
 
-4. redispool 获取的连接记得释放
+4. 
+
+1. `std::unordered_map`代替`std::map` 
+
+   std::vector<std::string> 替换为 std::unordered_set<std::string>   注意有些会有重复值使用unordered_multiset
+
+2. 原先 数据库和redis 现在本地和redis
+
+3. 数据库需要使用的字段保留http相关的接口，其他的从本地读取
+
+   
+
+1. 绝对路径配置  
+
+   1. initTile有一个读取本地白图
+
+2. PC 和  Platelet ok
+
+   ```
+   Platelet 是在白细胞数据写入时检测到标签属于血小板类型
+   ```
+
+3. 极速扫描 
+
+   1. 写入做限制 100白 1000红   无，假数据
+
+   2. 用于白细胞为100时，判断为极速模式  
+
+      1.  字段名：scan_count ，白细胞扫描参数为100时，包含在红细胞传输的json数据中，数值为100，其余情况为0
+
+      2. 红细胞和血小板初始化为   3*4 
+
+   3. 极速模式下载    每次红白血小板计数结束后，调用一次python提供的接口
+
+| 状态字段         |                                                |        |
+| ---------------- | ---------------------------------------------- | ------ |
+| imageModelType、 | White、Red、PC                                 |        |
+| ModelType        | scan_mode: White、Red、PC模块类型 用于区分模块 |        |
+|                  |                                                |        |
+| TaskType         | Normal QC                                      |        |
+| ScanType         | Count All   Rapid   Area                       | string |
+|                  |                                                | string |
+|                  |                                                |        |
 
 
 
-1. model_type在数据库中没存，下位机是在TransportData阶段传过来，那么FinishPrescan阶段初始化瓦片地图只能所有都初始化
-2. 
-3. 更新版本go代码
-4. 添加一个读取指定图片的接口
-5. 单例日志
-6. c++先写文档
-7. cli 释放
-8. 
-9. json转换问题
-10. 血小板模块循环图片写入 使用多线程
-11. 疟疾数据库接口和字段
-12. python返回的白结果 类型可能不完全
-13. `std::unordered_map`代替`std::map`）。 
-14. std::vector<std::string> 替换为 std::unordered_set<std::string>   注意有些会有重复值使用unordered_multiset
+Redis 数据
+
+|                                   | 原来rediskey | 新rediskey |
+| --------------------------------- | ------------ | ---------- |
+| x\y                               | X、Y         |            |
+| 原图                              | videoImg     |            |
+| 时序图                            | allImage     |            |
+|                                   |              |            |
+| 当前扫描的类型，目前暂定都是White | scan_type    |            |
+| WhiteRawIndexesContent            |              | rawImage   |
+
 
 
 
@@ -228,6 +250,22 @@ Cygnus系列项目玻片地图和写入模块
 4.  扫描结束，更新扫描区域 ，发送停止相应算法模型信号 redis
 
 # 使用库
+
+| 库                                      | 使用方式                                       |      |
+| --------------------------------------- | ---------------------------------------------- | ---- |
+| json:nlohmann-json                      | 单文件                                         |      |
+| redis:redis-plus-plus （依赖于hiredis） | 源码                                           |      |
+| base64:turbo-base64                     | 源码                                           |      |
+| yaml-cpp                                | 源码                                           |      |
+| 线程池：oneTbb                          | 源码                                           |      |
+| 日志：spdlog                            | 头文件                                         |      |
+| 网络：cpr                               | fetch获取                                      | ok   |
+| 图片处理：opencv4                       | linux安装   sudo apt-get install libopencv-dev | ok   |
+| libjpeg-turbo                           | 源码                                           |      |
+| libzip                                  | sudo apt-get install libzip-dev<br /><br />    | ok   |
+| fmt                                     | sudo apt-get install libfmt-dev                |      |
+
+
 
 ```C++
 json:nlohmann-json #include <nlohmann/json.hpp>  using json = nlohmann::json;
@@ -457,8 +495,9 @@ image0.fileSyncTimer->SetTask(1, std::chrono::seconds(syncInterval),
 
 
 
-
 ## 依赖下载
+
+#### 单独
 
 ```C++
 //1.vcpkg下载
@@ -522,9 +561,34 @@ vcpkg install
 # 在CMakeLists.txt   指定 vcpkg 的下载路径
 set(VCPKG_INSTALLED_DIR "/home/xiaoying/project/CygnusSC/vcpkg_installed")
 set(CMAKE_PREFIX_PATH "/home/xiaoying/project/CygnusSC/vcpkg_installed/x64-linux/share")
+    
+    
+    
 ```
 
+#### Cygnus-K
 
+```
+git clone https://github.com/sewenew/redis-plus-plus.git
+
+cd redis-plus-plus
+
+mkdir build
+
+cd build
+
+cmake ..
+
+make
+
+make install
+
+cd ..
+
+```
+
+1. common   inline std::string DracoCoreROOT = "/home/xiaoying/project/cygnusxcpp/data/jpgs";
+2. 
 
 # 待学
 
