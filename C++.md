@@ -1,265 +1,3 @@
-# 问题
-
-1. ```go
-   func (p *ParasiteThick) WriteTxt(ctx *utility.Context) {
-       p.LastUpdateIndexTime = time.Now()
-       //z这里写入路径不一样，可以使用协程 优化
-       for labelType, labelData := range p.LabelDic {
-
-          cellLabelTxtPath := path.Join(ImageROOT, fmt.Sprintf(CELL_LABEL_TXT_PATH, p.GlobalTaskId, ParasiteThickType, labelType))
-          if err := WriteLabelData(ctx, cellLabelTxtPath, labelData); err != nil {
-             utility.Errorf(ctx, "WriteTxt WriteLabelData err:%+v", err)
-             //continue
-          }
-          labelData.Sequence = []string{}
-          labelData.Data = map[string]string{}
-          p.LabelDic[labelType] = labelData
-       }
-   }
-   ```
-
-2. **捕获的生命周期问题**
-
-   如果 `imageByte` 是一个局部变量，而 Lambda 被异步运行（例如在线程池中调度），那么 `imageByte` 的生命周期可能在 Lambda 执行之前结束。这会导致 Lambda 捕获的引用变成悬空引用，访问时表现为未定义行为。
-
-   **解决方法**： 改用按值捕获来确保 `imageByte` 的生命周期在 Lambda 中有效：
-
-   ```
-   cpp复制代码image0.WriteRawImageDataWg.run([this, imageByte, fop, imageName] {
-       spdlog::info("WriteImageData begin 00000000 ,imageByte.size() = {}", imageByte.size());
-       image0.WriteImageData(fop, imageByte, imageName, image0.WhiteRawIndexesContent, image0.WhiteRawIndexesMux);
-   });
-   ```
-
-   > **注意**：按值捕获会拷贝 `imageByte`，这对大数据结构可能有性能影响，但可以确保数据独立性。
-
-3. 添加错误处理
-
-4. tcmalloc、内存释放、析构函数
-
-5. lamada 捕获 引用
-
-6. map 不在存储 Mat，改为字节数据， 到合成玻片时，再转为 Mat 处理---这个太慢，因为原来是一次转换五次使用，变为了五次转换五次使用
-
-7. 找一个库可以把 std::vector<std::vector<std::vector<uint8_t>>> image64 直接合并成一张大图片
-
-8. pprof 和火焰图和内存分析
-
-9. -lprofiler -ltcmalloc
-
-10.
-
-11. 部分 task 没加锁
-
-12.
-
-13. 玻片地图模块每次
-
-14. 更新 http 的 url 接口所有字段都要
-
-15. upload_status 在 finishscan 和 stoptask 中，未更新
-
-    concentrationcalculate 注释掉了疟疾代码
-
-16. 标注系统 的 gettaskuploadstatus 需要更新
-
-# CygnusSC
-
-Cygnus 系列项目玻片地图和写入模块
-
-# 任务管理
-
-写入模块：只有程序异常结束时才会 设为 Failture
-
-# 使用库
-
-```C++
-json:nlohmann-json #include <nlohmann/json.hpp>  using json = nlohmann::json;
-base64:cpp-base64
-redis:redis-plus-plus #include <sw/redis++/redis++.h>
-配置文件：yaml-cpp  #include <yaml-cpp/yaml.h> /  Boost.PropertyTree  <boost/property_tree/ini_parser.hpp>
-数据库：libpqxx
-opencv4
-网络：cpr
-日志：spdlog
-并发：oneTbb #include <oneapi/tbb/task_group.h>
-```
-
-# 玻片地图
-
-## 优化
-
-### 已完成
-
-1. 写入改为 pwrite + 定时刷新到磁盘，并发在指定偏移量写入数据不用加锁
-
-2. 直接读取图片 byte，不再通过 Mat 中转
-
-   - opencv 读取成 Mat 图片占用内存太大、 817.5KB 的图片变为 Mat 是 6.65MB
-
-     导致处理时间倍增
-
-3. base64 只有写入瓦片时从 Mat 转为 byte
-
-4. 瓦片拼接使用 cv::hconcat`和`cv::vconcat
-
-5.
-
-### 待做
-
-1. **libjpeg-turbo** 和 OpenCV 的 `cv::parallel_for_ ` / \#pragma omp parallel for
-
-   1. 缩放、覆盖加速
-   2. 字节流转化为 Mat 处理加速
-
-2. 资源释放
-
-3. 玻片地图拼接 多线程、直接覆盖
-
-4. 错误处理
-
-5. 注释
-
-6. Mat 引用优化
-
-7. 初始化时不再使用空白图形填充（申请内存），使用时再申请
-
-   或者直接一个瓦片大图，缩放覆盖 （减少内存占用）
-
-## 耗时
-
-一共 10\*184 个图片，不限制线程数：
-
-- 读取图片到内存： 126.375 s ---------》 全部读取完再处理，内存占用大约 4G
-
-- 所有图片处理的总耗时：13 s 、15s 、17s
-
-- 只写入原图数据：16s
-
-- 只有 瓦片和时序图 处理：10s
-
-- 只有瓦片：8s
-- 只有时序图：8s
-- 一次时序图覆盖时间：
-
-- 一次原图写入时间：
-
-| 例子          | 处理时间    | CPU 占用 | 内存占用      | 文件刷新间隔 |
-| ------------- | ----------- | -------- | ------------- | ------------ |
-| 10\*184(1.3G) | 13s         | 线程占满 | 4G            | 5s           |
-| 10\*184(1.3G) | 9s 10s 6.5s | 线程占满 | 4G            | 3s           |
-|               |             |          |               |              |
-|               |             | 10 线程  |               |              |
-| 10\*184(1.3G) |             | 15 线程  |               |              |
-|               |             | 20 线程  |               |              |
-| 20\*184(2.7G) | 14s 10.258s | 线程占满 | 19G-11.6=7.4G | 3S           |
-| 30\*184(4G)   |             | 线程占满 | 19G-11.6=7.4G | 3S           |
-
-## 接收数据
-
-暂时从本地文件夹读取
-
-```C++
-  LoadAllImages("/home/xiaoying/project/CygnusSC/raw");
-
-//直接读取byte数据
-std::vector<uint8_t> imageByte = std::vector<uint8_t>(std::istreambuf_iterator<char>(std::ifstream(entry.path().string(), std::ios::binary).rdbuf()),
-                                                                std::istreambuf_iterator<char>());
-
-```
-
-## 图片处理
-
-1. 时序图缩放、覆盖
-
-   原图缩放到时序大图的目标区域
-
-2. 玻片地图缩放、拼接
-
-imwrite 最后写入时序大图使用
-imencode 耗时多 0.15s 写入瓦片图时，将 mat 转为 vector<uint8_t>
-
-imread，imwrite，imdecode 和 imencode
-
-## 玻片地图
-
-1.预扫描结束阶段：生成各层空白瓦片地图 2.正式扫描阶段：
-图片不断传输，偶数行替换翻转（循环扫描）
-
-每次缩放到各层不同的大小填充不同瓦片的不同区域（每 splitnum 个图片为一个瓦片）
-每个瓦片全部填充完毕，内部各个小图片合成一张图片（瓦片）
-
-有边缘区域不足 splitnum\*splitnum 张 ，保留之前的空白图形
-当 最后一行/列某一个瓦片的真实图片数 已经填充完毕，开始拼接
-
-3.结束任务时，清理各层无需合成瓦片地图的数据
-
-## 写入
-
-并发偏移写入+定时刷新到磁盘中
-
-```C++
-fp = open(fileName.c_str(), O_CREAT | O_RDWR, 0644);
-ssize_t bytes_written = pwrite(fp, data.data(), data.size(), offset);
-
-image0.fileSyncTimer->SetTask(1, std::chrono::seconds(syncInterval),
-                                [this] { image0.whiteRaw->FlushFile(); });
-```
-
-# 写入模块
-
-从 python 传来的数据，以图片为单位，包含算法识别后 该图片的细胞信息（序列号、类别、名称、细胞图片 base64 编码、停止判断 ），
-
-数据分为：
-
-1. 接受的数据
-2. 写入 txt 的数据
-3. dat
-
-标签计数
-调用接口停止硬件
-
-## 数据库
-
-1. CellWhiteCount 需要查询 whiteResult
-
-## 问题
-
-2. 整理 redis 状态
-3. redispool 获取的连接记得释放
-4. python 对应接口开发
-5. 写入字段再和钉钉文档对比一下
-
-# 项目迁移
-
-1. CMakeLists.txt 文件中
-
-   ```
-   # 指定 vcpkg 的安装路径
-   set(CMAKE_PREFIX_PATH "/home/lanmengyou/code/c++/CygnusSC/vcpkg_installed/x64-linux/share")
-
-   使用的是vcpkg的清单模式 --- 》vcpkg.json
-   直接使用vcpkg install下载
-   ```
-
-2. signalImage.cpp 加载 图片路径
-
-   ```C++
-     LoadAllImages("/home/xiaoying/project/CygnusSC/raw");
-   ```
-
-3. Common.h 初始图片路径
-
-   ```C++
-     inline std::string DracoCoreROOT = "/home/xiaoying/project/CygnusSC/jpgs";
-   ```
-
-4. Server.cpp 任务 id
-
-   ```C++
-   std::string stringTaskID = "3";
-   ```
-
 # 待学
 
 ```
@@ -275,7 +13,103 @@ std::bind/std::function 库
 make_unique
 ```
 
+学习 C++ 是一个循序渐进的过程，建议从**基础语法**入手，逐步掌握面向对象编程、标准库、现代特性（如 C++11~C++20）、模板、并发编程等内容。以下是一个高效、实用的学习路径和资源推荐。
+
+------
+
+## 🧭 学习路线图
+
+### 1. ✅ **掌握基础语法**
+
+- 变量、数据类型、运算符
+- 条件语句（if / switch）
+- 循环（for / while / do-while）
+- 函数定义与调用
+- 指针与引用
+- 数组与字符串
+
+📘 推荐资源：
+
+- 《C++ Primer》（第5版）——入门经典书籍
+- [CPlusPlus.com 教程](https://www.cplusplus.com/doc/tutorial/)
+- [菜鸟教程 C++](https://www.runoob.com/cplusplus/cpp-tutorial.html)
+
+------
+
+### 2. 🧱 **理解面向对象编程（OOP）**
+
+- 类与对象
+- 构造函数 / 析构函数
+- 继承、多态、虚函数
+- 封装、友元函数、静态成员
+
+📘 推荐阅读：
+
+- 《Effective C++》系列（Scott Meyers）
+- [LearnCpp.com](https://www.learncpp.com/)（非常推荐）
+
+------
+
+### 3. 📦 **掌握 STL（标准模板库）**
+
+- 容器：`vector`, `map`, `set`, `unordered_map`, `list`
+- 算法：`sort`, `find`, `accumulate`, `for_each`
+- 迭代器：了解不同类型与用法
+- 函数对象、Lambda 表达式（C++11）
+
+📘 实用建议：
+
+- 多练习 `std::vector`、`std::map`、`std::string` 等常用容器。
+- 编写小程序（如：词频统计、学生成绩管理）来练手。
+
+------
+
+### 4. 🧪 **深入现代 C++（C++11 ~ C++20）**
+
+- 自动类型推导（`auto`）
+- 智能指针（`unique_ptr`, `shared_ptr`）
+- Lambda 表达式
+- `nullptr`、`enum class`、`constexpr`
+- `std::thread` 并发编程
+- 模板与泛型编程
+- `concepts`, `coroutines`（C++20）
+
+📘 推荐资料：
+
+- 《Effective Modern C++》 — Scott Meyers
+- 《C++ Concurrency in Action》 — Anthony Williams
+- [CppReference](https://en.cppreference.com/) — 权威在线文档
+
+------
+
+### 5. 🛠️ **项目实践**
+
+- 实现一个小项目，比如：
+  - 文件管理器
+  - 聊天程序（网络 + 多线程）
+  - 简易图像处理（配合 OpenCV）
+  - 游戏或模拟器
+- 在项目中学习 Makefile、CMake、调试技巧（GDB、VS Debug）等工具链
+
+------
+
+### 6. 🧠 学习建议
+
+| 建议     | 说明                                              |
+| -------- | ------------------------------------------------- |
+| 多练习   | 不写代码不会写，写熟才会用                        |
+| 多提问   | 遇到难题上 StackOverflow、GitHub、知乎            |
+| 多阅读   | 看别人写的高质量代码（如 GitHub 上优秀 C++ 项目） |
+| 学 Git   | 管理你的代码和项目更方便                          |
+| 学工具链 | 掌握 CMake、g++, clang++, Visual Studio           |
+
+------
+
+
+
 # 基础语法
+
+
 
 ## 错误处理
 
@@ -283,18 +117,19 @@ make_unique
 2. **复杂模块**：全局变量适合需要分离计算结果与错误信息的情况，但需注意线程安全。
 3. **复杂逻辑或分类处理**：异常机制适合需要灵活应对多种错误的场景，利于代码的可维护性。
 
-| **方式**                     | **特点**                                                       | **优点**                                                   | **缺点**                                                           | **适用场景**                           |
-| ---------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------- |
-| **通过返回值传递错误信息**   | 返回值指示错误状态（如`0`成功，非`0`失败）；错误码需文档解析。 | 简单直观，调用方便；适合简单错误处理。                     | 返回值局限，函数无法直接返回计算结果；需额外维护错误码表。         | 自定义 SDK 或 API 设计                 |
-| **使用全局变量保存错误信息** | 全局变量保存最后一次错误状态；返回值传递计算结果。             | 返回值可直接用于赋值或传递；调用逻辑简化。                 | 可能忘记检查全局变量，易遗留隐患；多线程环境下需额外处理线程安全。 | 系统级 API 或底层模块                  |
-| **异常捕获与处理**           | 通过`try-catch-throw`捕获和分类处理异常，支持多种错误类型。    | 清晰划分正常逻辑与异常逻辑；支持复杂错误分类与层次化管理。 | 增加运行开销，可能影响性能；不适合高性能或资源受限场景。           | 面向对象的复杂业务逻辑，多错误类型场景 |
+| **方式**                     | **特点**                                                     | **优点**                                                   | **缺点**                                                     | **适用场景**                           |
+| ---------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- |
+| **通过返回值传递错误信息**   | 返回值指示错误状态（如`0`成功，非`0`失败）；错误码需文档解析。 | 简单直观，调用方便；适合简单错误处理。                     | 返回值局限，函数无法直接返回计算结果；需额外维护错误码表。   | 自定义SDK或API设计                     |
+| **使用全局变量保存错误信息** | 全局变量保存最后一次错误状态；返回值传递计算结果。           | 返回值可直接用于赋值或传递；调用逻辑简化。                 | 可能忘记检查全局变量，易遗留隐患；多线程环境下需额外处理线程安全。 | 系统级API或底层模块                    |
+| **异常捕获与处理**           | 通过`try-catch-throw`捕获和分类处理异常，支持多种错误类型。  | 清晰划分正常逻辑与异常逻辑；支持复杂错误分类与层次化管理。 | 增加运行开销，可能影响性能；不适合高性能或资源受限场景。     | 面向对象的复杂业务逻辑，多错误类型场景 |
 
-## any 和 variant
+
+
+## any和variant
 
 在 C++ 中，要定义一个类似于 Go 的 `map[string]interface{}` 的数据结构，通常需要结合 STL 容器和类型擦除机制。具体可以使用 `std::unordered_map<std::string, std::any>` 或 `std::unordered_map<std::string, std::variant<...>>`。
 
 ### 使用 `std::any`
-
 `std::any` 是 C++17 引入的类型，可以存储任意类型的值，并在运行时提取。
 
 ```cpp
@@ -306,7 +141,6 @@ std::unordered_map<std::string, std::any> RedThresholdM;
 ```
 
 #### 示例代码
-
 ```cpp
 #include <iostream>
 #include <unordered_map>
@@ -342,7 +176,6 @@ int main() {
 ---
 
 ### 使用 `std::variant`
-
 如果已知 `interface{}` 可能的具体类型集合，可以使用 `std::variant`，这样可以避免运行时类型转换带来的性能开销和潜在问题。
 
 ```cpp
@@ -357,7 +190,6 @@ std::unordered_map<std::string, VariantType> RedThresholdM;
 ```
 
 #### 示例代码
-
 ```cpp
 #include <iostream>
 #include <unordered_map>
@@ -389,7 +221,6 @@ int main() {
 ---
 
 ### 对比 `std::any` 和 `std::variant`
-
 | **特性**       | **std::any**                 | **std::variant**       |
 | -------------- | ---------------------------- | ---------------------- |
 | **存储类型**   | 任意类型                     | 预定义的有限类型集合   |
@@ -400,13 +231,15 @@ int main() {
 - 如果类型不确定且动态性强，使用 `std::any`。
 - 如果类型范围有限且稳定，使用 `std::variant`。
 
+
+
 # 编译运行
 
 ## 编译器
 
 C++ 编译器是将 **C++ 源代码**（`.cpp` 文件）翻译为机器代码的工具，最终生成可以在目标平台上运行的可执行文件。以下是关于 C++ 编译器的核心知识和常见编译器的介绍。
 
----
+------
 
 ### 功能
 
@@ -419,11 +252,11 @@ C++ 编译器的主要功能包括：
 5. **汇编：** 将汇编代码转换为机器代码（生成目标文件 `*.o` 或 `*.obj`）。
 6. **链接：** 将目标文件与库链接，生成可执行文件。
 
----
+------
 
 ### **2. 常见的 C++ 编译器**
 
-### **（1）GCC（GNU Compiler Collection）**
+**（1）GCC（GNU Compiler Collection）**
 
 - **介绍：**
   - 开源跨平台编译器。
@@ -437,9 +270,9 @@ C++ 编译器的主要功能包括：
   - Linux 通常默认安装。
   - Windows 可以通过 **MinGW** 或 **Cygwin** 安装。
 
----
+------
 
-### **（2）Clang**
+**（2）Clang**
 
 - **介绍：**
   - 基于 LLVM 的现代化编译器。
@@ -452,9 +285,9 @@ C++ 编译器的主要功能包括：
   - macOS 系统自带。
   - 在 Linux 和 Windows 上也可以通过包管理工具安装。
 
----
+------
 
-### **（3）MSVC（Microsoft Visual C++）**
+**（3）MSVC（Microsoft Visual C++）**
 
 - **介绍：**
   - 微软为 Windows 开发的专属编译器。
@@ -468,9 +301,9 @@ C++ 编译器的主要功能包括：
   - 仅支持 Windows。
   - 对 C++ 标准的支持可能滞后（不过近年来改进很大）。
 
----
+------
 
-### **（4）Intel C++ Compiler（ICC 或 ICX）**
+**（4）Intel C++ Compiler（ICC 或 ICX）**
 
 - **介绍：**
   - Intel 提供的高性能 C++ 编译器。
@@ -482,15 +315,15 @@ C++ 编译器的主要功能包括：
   - 商业编译器（但 Intel 提供免费的社区版）。
   - 针对非 Intel 硬件的优化效果较弱。
 
----
+------
 
-### **（5）其他编译器**
+**（5）其他编译器**
 
 - **Borland C++ Builder：** 适合快速开发 Windows 图形应用程序。
 - **Oracle Developer Studio：** 针对 Solaris 和 Linux 的优化编译器。
 - **TinyCC：** 一个小型、轻量的 C/C++ 编译器，适合嵌入式环境。
 
----
+------
 
 ### **3. 编译器的选择**
 
@@ -502,11 +335,11 @@ C++ 编译器的主要功能包括：
 | 嵌入式或轻量开发 | GCC 或 TinyCC            |
 | macOS 原生开发   | Clang                    |
 
----
+------
 
 ### **4. 使用示例**
 
-### **编译一个简单程序**
+**编译一个简单程序**
 
 示例代码（`hello.cpp`）：
 
@@ -541,7 +374,7 @@ int main() {
    hello.exe
    ```
 
----
+------
 
 ### **5. 支持的 C++ 标准**
 
@@ -560,11 +393,11 @@ int main() {
 g++ -std=c++20 hello.cpp -o hello
 ```
 
----
+------
 
 ### **6. 调试和优化**
 
-### **调试：**
+**调试：**
 
 - 使用 `-g` 选项生成调试信息。
 
@@ -573,7 +406,7 @@ g++ -g program.cpp -o program
 gdb ./program
 ```
 
-### **优化：**
+**优化：**
 
 - 编译时可以使用优化选项：
   - `-O0`：无优化（默认）。
@@ -587,7 +420,7 @@ gdb ./program
 g++ -O3 program.cpp -o program
 ```
 
----
+------
 
 ### **7. 未来趋势**
 
@@ -595,11 +428,13 @@ g++ -O3 program.cpp -o program
 - **Clang 和 GCC** 的竞争促进了 C++ 编译器的快速发展。
 - **MSVC** 在 C++ 标准支持方面逐步追赶。
 
-### **结论：**
+**结论：**
 
 - **跨平台开发：** 首选 GCC 或 Clang。
 - **Windows 原生开发：** 使用 MSVC。
 - **性能至上：** 使用 Intel C++ Compiler 或其他针对性优化的编译器。
+
+
 
 ## 静动态链接
 
@@ -610,72 +445,72 @@ g++ -O3 program.cpp -o program
 
 开发时可以根据项目需求选择合适的链接方式，或者混合使用两者（核心部分静态链接，非核心模块动态链接）。
 
----
+------
 
 ### **1. 静态链接**
 
-### **定义：**
+**定义：**
 
 静态链接是在编译期间将目标文件与所需的库直接合并到最终生成的可执行文件中。
 
-### **特点：**
+**特点：**
 
 - 库文件的内容会被直接嵌入到可执行文件中。
 - 生成的可执行文件是一个独立的、完整的文件。
 - 运行时不需要依赖外部库。
 
-### **优点：**
+**优点：**
 
 1. **独立性高**：生成的可执行文件不依赖外部库，在运行时不需要额外的动态链接库。
 2. **执行速度快**：因为链接工作已经在编译时完成，运行时省去了动态链接的开销。
 3. **分发方便**：用户运行程序时不需要安装额外的库。
 
-### **缺点：**
+**缺点：**
 
 1. **文件体积大**：因为将所有依赖库的代码嵌入可执行文件，导致生成的文件体积较大。
 2. **更新不灵活**：如果依赖的库需要更新，需要重新编译整个程序。
 3. **资源浪费**：不同的程序如果都静态链接相同的库，会导致重复存储。
 
-### **适用场景：**
+**适用场景：**
 
 - 对运行环境依赖较少的应用程序（如嵌入式系统）。
 - 需要单一可执行文件的场景（如便携工具）。
 - 安全性要求较高的场景（避免动态库被替换或注入恶意代码）。
 
----
+------
 
 ### **2. 动态链接**
 
-### **定义：**
+**定义：**
 
 动态链接是在运行时将程序与动态链接库（如 `.dll`、`.so` 文件）绑定，程序本身只包含对库的引用，而不是库的代码。
 
-### **特点：**
+**特点：**
 
 - 库文件独立于可执行文件。
 - 可执行文件运行时需要动态链接库的支持。
 - 动态库可以被多个程序共享。
 
-### **优点：**
+**优点：**
 
 1. **文件体积小**：可执行文件本身不包含库的代码，库的内容单独存储。
 2. **更新灵活**：库文件可以单独更新，不需要重新编译整个程序。
 3. **共享内存**：多个程序可以共享同一个动态库，节省内存空间。
 4. **模块化**：支持按需加载库，实现功能的动态扩展。
 
-### **缺点：**
+**缺点：**
 
 1. **运行时依赖**：运行时需要确保动态库的正确版本存在，否则程序可能无法运行。
 2. **性能开销**：程序在运行时需要加载动态库并完成链接，启动时间会稍慢。
 3. **兼容性问题**：动态库的版本变化可能导致兼容性问题（俗称“动态链接地狱”）。
 
-### **适用场景：**
+**适用场景：**
 
 - 操作系统级别的共享库（如标准 C 库、图形库）。
 - 大型软件系统，需要模块化和灵活更新。
 - 对性能要求不高的应用程序。
 
----
+------
 
 ### **3. 区别对比**
 
@@ -689,11 +524,11 @@ g++ -O3 program.cpp -o program
 | **启动性能**       | 较快                     | 稍慢（需要加载库）     |
 | **分发便利性**     | 单文件，易于分发         | 需要附带或安装动态库   |
 
----
+------
 
 ### **4. 示例**
 
-### **静态链接：**
+**静态链接：**
 
 ```bash
 g++ -o app main.cpp -L./lib -lstaticlib -static
@@ -703,7 +538,7 @@ g++ -o app main.cpp -L./lib -lstaticlib -static
 - `-L` 指定库文件的路径。
 - `-lstaticlib` 链接静态库文件 `libstaticlib.a`。
 
-### **动态链接：**
+**动态链接：**
 
 ```bash
 g++ -o app main.cpp -L./lib -ldynamiclib
@@ -714,13 +549,13 @@ g++ -o app main.cpp -L./lib -ldynamiclib
 
 运行动态链接的程序时，需要确保动态库文件路径在系统的共享库路径中（如 Linux 的 `LD_LIBRARY_PATH` 或 Windows 的 `PATH`）。
 
----
+------
 
 ### **5. 动态链接的运行时动态加载**
 
 在动态链接的基础上，可以通过运行时加载库（如 `dlopen` 或 Windows 的 `LoadLibrary`），实现更灵活的功能扩展。
 
-### **Linux 示例（dlopen）：**
+**Linux 示例（dlopen）：**
 
 ```cpp
 #include <dlfcn.h>
@@ -748,7 +583,11 @@ int main() {
 }
 ```
 
----
+------
+
+
+
+
 
 # 数据库
 
@@ -756,17 +595,17 @@ int main() {
 //疟疾scanType分为三种：Thin,Thick,ThickThin
 ```
 
-1. sql： task 表
+1. sql： task表 
 
 2. redis：
 
-   1. 时序小图 base64---> json --->videoImg
+   1. 时序小图base64---> json --->videoImg
    2. 通知下位机传输预扫描数据成功 "lpush", "preScan", "0"
 
 3. 数据：
 
    ```go
-   //FinishPreScan的下位机数据
+   //FinishPreScan的下位机数据	
    //	stringTaskID := data[0] ？markNum
    	stepNumberStr := data[1]
    	stepLength := data[2]
@@ -774,10 +613,10 @@ int main() {
    	//slideThumbnail := data[4]
    	isFlat := data[5]
    	redStepNumberStr := data[6]
-
+   
    //"scan_region": {"bianyuan": [0, 0, 0, 0], "platelet_region": [0, 0, 0, 0], "red_region": [0, 0, 0, 0], "tiwei": [0, 0, 0, 0], "white_region": [0, 0, 0, 0]}, "scan_type": "All"}
    	var scanRegion common.ScanRegionStructNew
-
+   
    //scan下位机传输数据
    row := data[1]
    col := data[2]
@@ -786,314 +625,16 @@ int main() {
    zString := strings.Trim(data[5], "-")
    imageContent := data[6]
    imageModelType := data[7]
-
+   
    //红和血小板公用一套图片
    ```
 
-# 技术栈
-
-## go
-
-| 名称   | 用途         | 功能 | 端口 |
-| ------ | ------------ | ---- | ---- |
-| gin    |              |      |      |
-| redigo | redis 客户端 |      |      |
-|        |              |      |      |
-|        |              |      |      |
-
-### 数据交互
-
-下位机、算法的交互是通过 redis
-
-### main 流程
-
-有**瓦片图和时序图**
-
-#### createtask
-
-#### prescan
-
-判断扫描的整体区域 rows、cols
-
-#### FinishPreScan
-
-```
-FinishPreScan 阶段：
-初始化空白瓦片地图
-假如是 6rows   8cols
-瓦片名称：%d-%d
-imageMap[serialNumber]([][]image.Image  )   key:"%d-%d" value:二维数组图像--此时使用空白图片填充
-```
-
-，白、红/血小板（使用一套逻辑）
-
-#### scan
-
-##### 往返扫描
-
-扫描时是往返扫描 ，下标从 1 开始
-
-是三角坐标系，xyz
-
-| 1,1 | 1,2 | 1,3 |
-| --- | --- | --- |
-| 2,3 | 2,2 | 2,1 |
-| 3,1 | 3,2 |     |
-|     |     |     |
-
-##### 三个
-
-这三个是同时进行的
-
-1. 瓦片地图（分层进行拼接） 初始化时全为空白图像，通过下位机的图片数据进行填充
-
-   长宽减半可能导致小数 7.5，改为 8
-
-2. 向算法推送数据，（redis 存的是图片数据）
-
-3. 处理算法的结果
-
-##### imageModelType
-
-```
-p.Info.ModelType = imageModelType 、//
-```
-
-```go
-//imageModelType = common.PlateletModelType
-const RedModelType = "Red"        //红模块
-const WhiteModelType = "White"    //白模块
-const PlateletModelType = "PC"    //血小板模块
-const ParasiteThinType = "Thin"   //疟疾薄模块
-const ParasiteThickType = "Thick" //疟疾厚模块
-```
-
-##### 区域
-
-```
-ParasiteThinType 疟疾薄 RedCols RedRows
-RedModelType和PlateletModelType 6行8列   RedCols RedRows
-
-WhiteModelType 和 ParasiteThickType 使用common.TaskInfo的  Rows Cols
-```
-
-#### FinishScan
-
-注意上位机停止和下位机停止会有时间差距，比如算法慢要进行阻塞
-
-#### StopTask
-
-结束任务，异常结束或者用户取消
-
-### 1.图片拼接模块
-
-分块大小 `splitNum`
-
-行列数和图片模型类型的关系
-
-```go
-	if imageMapType == common.WhiteModelType || imageMapType == common.ParasiteThickType {
-		finishCol = p.FinishWhiteCol
-		finishRow = p.FinishWhiteRow
-	}
-	if imageMapType == common.ParasiteThinType || imageMapType == common.RedModelType {
-		finishCol = p.FinishRedCol
-		finishRow = p.FinishRedRow
-	}
-// 血小板模型
-	if imageMapType == common.PlateletModelType {
-		finishRow = 6
-		finishCol = 8
-	}
-```
-
-| 层级                            | splitnum（瓦片<br />splitNum\*splitNum 的图片组成） | 总瓦片数                             |     |
-| ------------------------------- | --------------------------------------------------- | ------------------------------------ | --- |
-| FirstImageMap: 第一层瓦片地图   | 8                                                   | ⌈ rows/splitNum ⌉\*⌈ cols/splitNum ⌉ |     |
-| SecondImageMap: 第二层瓦片地图  | 64                                                  |                                      |     |
-| ThirdImageMap: 第三层瓦片地图   | 1                                                   |                                      |     |
-| SeventhImageMap: 第七层瓦片地图 | 4                                                   |                                      |     |
-| EighthImageMap: 第八层瓦片地图  | 2                                                   |                                      |     |
-|                                 |                                                     |                                      |     |
-
-```
-
-```
-
-#### 时序图
-
-采取的是本次写入上一次传来的时序图，finish 阶段写入最后的时序图
-
-### 2.处理算法输出结果
-
-白模块、红模块、血小板模块、疟疾薄模块、疟疾厚模块、疟疾红计数、疟疾白计数
-
-```go
-TaskType  string //normal qc
-ScanType  string //Count All Area ThickThin
-SlideId   string //玻片号
-ModelType string //red write pc
-"PC"    //血小板模块
-```
-
-```
-// QCTaskType 质量控制
-
-txt文本文件
-dat数据文件
-```
-
-#### 红模块
-
-红细胞有不同的标签，最后是统计不同标签的数量：ThrombocyteAggregation,GiantThrombocyte,LargePlatelets,GranulesReducedMissingPlatelets,MalformedPlatelets,AbnormalPlatelet,OtherP
-
-```go
-type SingleLabelValue struct {
-	Count  int           `json:"count"`
-	Log    []interface{} `json:"log"`
-	Ration any           `json:"ration"` //
-}
-
-// 红细胞结果
-type RedTaskResult struct {
-	AllCount   int                         `json:"all_count"`   //已经分析的细胞总数
-	LabelCount map[string]SingleLabelValue `json:"label_count"` //标签计数 key:标签名 value:SingleLabelValue struc
-}
-
-{"all_count":586,"label_count":{"BasophilicStippling":{"count":0,"log":[],"ration":""},"BiphasicCell":{"count":0,"log":[],"ration":""},"BiteCell":{"count":0,"log":[],"ration":""},"BlisterCell":{"count":0,"log":[],"ration":""},"BurrCell":{"count":0,"log":[],"ration":""},"CabotRing":{"count":0,"log":[],"ration":""},"Elliptocyte":{"count":2,"log":[],"ration":""},"Eperythrozoon":{"count":0,"log":[],"ration":""},"Erythrocyte":{"count":372,"log":[],"ration":""},"HaemoglobinH":{"count":0,"log":[],"ration":""},"HenizBodies":{"count":0,"log":[],"ration":""},"HowellJollyBody":{"count":0,"log":[],"ration":""},"Hyperpigmented":{"count":0,"log":[],"ration":""},"Hypochromic":{"count":0,"log":[],"ration":""},"IntracellularHaemoglobinCrystals":{"count":0,"log":[],"ration":""},"Keratocyte":{"count":0,"log":[],"ration":""},"Macrocyte":{"count":0,"log":[],"ration":""},"Microcyte":{"count":165,"log":[],"ration":""},"Ovalocyte":{"count":51,"log":[],"ration":""},"Pappenheimer":{"count":0,"log":[],"ration":""},"Poikilocyte":{"count":93,"log":[],"ration":""},"PolychromatophilicRedCell":{"count":0,"log":[],"ration":""},"RedCellAgglutinates":{"count":0,"log":[],"ration":""},"RedNoCount":{"count":1656,"log":null,"ration":""},"Rouleaux":{"count":0,"log":[],"ration":""},"Schistocyte":{"count":4,"log":[],"ration":""},"SickieCell":{"count":0,"log":[],"ration":""},"Spherocyte":{"count":0,"log":[],"ration":""},"SpurCell":{"count":0,"log":[],"ration":""},"Stomatocyte":{"count":0,"log":[],"ration":""},"TargetCell":{"count":1,"log":[],"ration":""},"TeardropCell":{"count":0,"log":[],"ration":""},"UnevenSize":{"count":0,"log":[],"ration":""}}}
-
-{"scan_type": "Count", "scan_region": {"white_region": [0, 0, 0, 0], "red_region": [0, 0, 0, 0], "platelet_region": [0, 0, 0, 0], "tiwei": [0, 0, 0, 0], "bianyuan": [0, 0, 0, 0]}, "scan_parameter": {"white_count": 50}, "module_info": {"PC": true, "Platelet": true, "Red": true, "White": true, "pc_factor_num": 0}}
-```
-
-## python
-
-## c++
-
-### 瓦片地图部分
-
-设计架构
-
-需要重构的有
-
-整体是一个调用函数，不停接收（while（true））新图像数据（socket 接收数据），
-原来在 redis 中获取的数据改为函数调用
-
-1. 传参，判断不同阶段
-2. 心跳 // 待定
-3. 创建任务
-4. 预扫描
-   1. 状态检测、数据校验
-   2. 更新任务状态 ，当前任务是否已删除
-   3. 写入玻片缩略图
-5. 预扫描结束：
-   1. 状态检测、数据校验
-   2. 反序列化预扫描数据,更新任务信息
-   3. 初始化时序图和各层瓦片地图
-   4. 更新任务信息
-   5. 通知前端预扫描成功
-   6. 启动定时任务，文件的数据被定时写入磁盘
-6. 正式扫描：传输处理图形数据
-   1. 状态检测、数据校验
-   2. 获取图像信息
-   3. 更新进度条
-   4. 独立软件逻辑 图片计数，更新进度
-   5. 上传标注系统
-   6. 处理图片数据：填充-- 瓦片地图、时序图、原始图
-      1. HandleTransportData 处理扫描数据
-      2. 原图写入本地硬盘 根据索引写入文件
-      3. ---索引实时发送 redis
-      4. 生成瓦片地图和时序图并写入磁盘
-      5. 向算法推送图片数据 通过 redis
-7. 扫描结束
-   1. 状态检测、数据校验
-   2. 等待瓦片地图和时序图生成
-   3. 写入瓦片地图和时序图 以及索引文件
-   4. 停止定时任务、关闭文件操作
-   5. 清理 redis 任务
-   6. 没有算法模块，更新任务状态、清理时序小图和大图
-   7. 扫描结束，发送停止相应算法模型信号 redis
-8. 停止任务
-   1. 状态检测、数据校验
-   2. 更新数据库任务状态
-   3. 通知前端任务失败 redis
-   4. 等待瓦片地图和时序图生成
-   5. 清理 redis 数据
-   6. 写入瓦片地图和时序图 以及索引文件
-   7. 如果有 上传标注系统
-   8. C++算法结束 redis
-9. 默认
-
-## **瓦片大小**和**地图缩放**
-
-在玻片地图（Tiled Map）中，**瓦片大小**和**地图缩放**之间的关系是至关重要的。瓦片大小决定了单个瓦片在地图中的物理尺寸，而地图的缩放则会影响整个地图的显示方式，包括瓦片如何在屏幕上渲染。理解二者之间的关系对于优化游戏地图的视觉效果和性能至关重要。
-
-### 1. **瓦片大小（Tile Size）**
-
-瓦片的大小是指单个瓦片的物理尺寸，通常以像素为单位。常见的瓦片尺寸有 32x32 像素、64x64 像素等。瓦片大小在设计时是固定的，这意味着每个瓦片占据的空间大小在设计时就已经决定了。
-
-- **瓦片大小定义**：每个瓦片代表一个地图单元，可以是地面、墙壁、障碍物等。瓦片的大小由开发者在游戏地图编辑器中设置（如 Tiled 编辑器），并会影响地图的整体布局和游戏玩法。
-
-例如，瓦片大小为 32x32 像素意味着每个瓦片在游戏中显示为 32 像素宽和 32 像素高的矩形。
-
-### 2. **地图缩放（Map Scaling）**
-
-地图缩放通常是指游戏中相机视图的缩放，它决定了玩家所看到的地图区域大小以及瓦片如何在屏幕上呈现。缩放可以影响地图和瓦片的显示比例，进而影响游戏的视觉效果和操作体验。
-
-- **缩放级别（Zoom Level）**：通常，游戏中的相机会根据不同的缩放级别来调整显示区域。不同的缩放级别会让地图变得更大或更小，瓦片的显示尺寸也会发生变化。
-
-  - **放大（Zoom In）**：放大地图时，瓦片会显示得更大，每个瓦片占用更多的屏幕空间。地图的可见区域变小，通常是玩家的视角会变得更近，细节更加突出。
-  - **缩小（Zoom Out）**：缩小时，瓦片会变小，更多的地图区域会被显示在屏幕上，通常会导致瓦片看起来较为密集，游戏中的世界显得更广阔。
-
-### 3. **瓦片大小与缩放的关系**
-
-瓦片的显示大小会随着地图缩放发生变化。具体来说，当地图进行缩放时，瓦片的屏幕尺寸会按比例调整，通常遵循以下几个原则：
-
-- **固定瓦片大小**：如果瓦片的大小在设计时已经固定，那么它们的物理尺寸不会改变，而是通过缩放相机来改变地图的显示方式。也就是说，地图缩放不会改变瓦片本身的大小，而是改变它们在屏幕上的显示比例。
-
-  - 例如，在默认的缩放级别下，每个瓦片可能是 32x32 像素，但如果缩放级别为 2（放大两倍），那么每个瓦片在屏幕上显示为 64x64 像素。
-  - 如果缩小地图到原来的 0.5 倍，瓦片则显示为 16x16 像素。
-
-- **缩放因子**：缩放因子（Zoom Factor）是决定瓦片如何缩放的关键参数。缩放因子是一个比率，通常可以设定为 1x、2x、0.5x 等。这个因子会影响瓦片的显示尺寸以及地图上瓦片的密集程度。
-
-- **放大地图**：每个瓦片变大，显示的瓦片数量减少。
-
-  **缩小地图**：每个瓦片变小，显示的瓦片数量增加。
-
-### 4. **瓦片与相机的配合**
-
-瓦片的缩放通常与相机的缩放或视角（field of view）配合使用。在大多数 2D 游戏中，相机控制游戏中的视图，缩放相机意味着玩家可以看到更大或更小的区域。
-
-- **相机缩放**：相机的缩放控制着显示的区域大小。例如，放大相机会让地图显示更小的部分，但每个瓦片的显示会变大。缩小相机则会让显示的区域增大，但每个瓦片的显示会变小。
-
-  - 在没有缩放的情况下，相机显示的区域与瓦片大小直接相关。例如，如果瓦片大小为 32x32 像素，且相机显示 10x10 的瓦片区域，那么相机的视野大小为 320x320 像素（32 像素 × 10）。
-  - 如果相机进行 2x 缩放，则相机的视野会减半，显示区域变成 160x160 像素，但每个瓦片会显示为 64x64 像素。
-
-- **游戏中的视觉效果**：通过动态调整相机的缩放级别，游戏可以实现多种视觉效果，如放大细节、显示更多区域、提供视差效果等。
-
-### 5. **性能影响**
-
-瓦片大小与地图缩放也会对游戏性能产生影响，尤其是在渲染和物理计算时。
-
-- **较大瓦片（放大缩放）**：如果瓦片被放大，它们会占用更多的屏幕空间，从而减少需要渲染的瓦片数量。这通常会降低渲染开销，因为在同一时间内，屏幕上显示的瓦片数量减少。
-
-- **较小瓦片（缩小缩放）**：缩小时，瓦片的显示尺寸会减小，导致在屏幕上显示更多的瓦片。这意味着游戏需要渲染更多的瓦片，可能会增加渲染的负担，尤其是在大规模地图中。
-
-因此，开发者需要在瓦片大小、地图缩放和游戏性能之间找到一个平衡，确保地图的显示效果和游戏性能都能得到优化。
-
-### 6. **瓦片缩放的插值与平滑**
-
-在缩放瓦片时，尤其是当瓦片显示尺寸发生大幅度变化时，可能会出现锯齿状边缘或者模糊的效果。为了避免这种情况，游戏引擎通常会使用纹理插值算法（如双线性插值或各向异性过滤）来平滑瓦片的显示效果，尤其是在放大缩小时。
-
-- **双线性插值（Bilinear Filtering）**：这种方法通过计算四个临近像素的加权平均值来平滑瓦片的显示，使其在缩放时看起来更加平滑。
-- **各向异性过滤（Anisotropic Filtering）**：这种方法优化了瓦片在不同角度下的显示效果，尤其是在大角度的缩放下，提供更高质量的视觉表现。
-
-### 总结
-
-瓦片大小与地图缩放之间的关系是非常重要的，理解二者之间的互动对于优化地图的显示效果和游戏性能至关重要。通过合理调整瓦片的设计大小、缩放因子、相机视角和渲染策略，开发者可以在游戏中创造出清晰、流畅且具有良好视觉体验的地图。
 
 # 各类库
 
 #include <fmt/ranges.h>
+
+
 
 # 内存
 
@@ -1113,6 +654,8 @@ type RedTaskResult struct {
 | **适用场景**   | 普通应用程序            | 高并发应用（如 Web 服务器）        | 长时间运行、对碎片敏感的服务（如数据库） |
 | **代表性应用** | 默认在 Linux 系统中使用 | Google 内部服务，gRPC，Bigtable 等 | Redis、Cassandra，FreeBSD 系统           |
 
+
+
 ## tcmalloc
 
 `tcmalloc`（Thread-Caching Malloc）是 Google 开发的一款高性能内存分配器，主要用来优化内存分配的速度和减少多线程环境中的锁竞争。在实际使用中，可以通过以下步骤将 `tcmalloc` 集成到项目中并发挥其优势。
@@ -1125,7 +668,7 @@ type RedTaskResult struct {
 
 在高并发应用程序（如 Web 服务器、实时计算系统）中，它可以显著提升内存分配性能并减少锁竞争，适合性能要求较高的场景。
 
----
+------
 
 ### **1. 安装 tcmalloc**
 
@@ -1173,7 +716,7 @@ type RedTaskResult struct {
    sudo ldconfig
    ```
 
----
+------
 
 ### **2. 使用 tcmalloc**
 
@@ -1201,16 +744,16 @@ type RedTaskResult struct {
 g++ -o my_program my_program.cpp -Wl,--whole-archive -ltcmalloc -Wl,--no-whole-archive
 ```
 
----
+------
 
 ### **3. 配置 tcmalloc**
 
 `tcmalloc` 提供多种配置选项，可以通过环境变量调整其行为。以下是常用选项：
 
-| **环境变量**                            | **描述**                                                                              |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| `TCMALLOC_RELEASE_RATE`                 | 控制释放未使用内存回操作的频率，默认为 1。值越大，释放速度越慢，但性能更高。          |
-| `TCMALLOC_LARGE_ALLOC_REPORT_THRESHOLD` | 设置大块内存分配的阈值（单位：字节），超过此值的分配会在日志中报告。                  |
+| **环境变量**                            | **描述**                                                     |
+| --------------------------------------- | ------------------------------------------------------------ |
+| `TCMALLOC_RELEASE_RATE`                 | 控制释放未使用内存回操作的频率，默认为 1。值越大，释放速度越慢，但性能更高。 |
+| `TCMALLOC_LARGE_ALLOC_REPORT_THRESHOLD` | 设置大块内存分配的阈值（单位：字节），超过此值的分配会在日志中报告。 |
 | `TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES` | 设置线程缓存的总内存限制，默认 16MB。可根据内存大小和应用需求调整此值以减少内存占用。 |
 
 #### **设置环境变量**
@@ -1235,7 +778,7 @@ int main() {
 }
 ```
 
----
+------
 
 ### **4. 调试与性能监控**
 
@@ -1265,7 +808,7 @@ export TCMALLOC_VERBOSE=1
 HEAPPROFILE=/tmp/heap_profile ./my_program
 ```
 
----
+------
 
 ### **5. 注意事项**
 
@@ -1276,7 +819,11 @@ HEAPPROFILE=/tmp/heap_profile ./my_program
 3. **与系统内存分配器的冲突**：
    - 如果程序中部分组件或第三方库对内存分配器有特殊要求（如 `mmap`），需要确保 `tcmalloc` 的兼容性。
 
-## jemalloc
+
+
+
+
+## jemalloc 
 
 `jemalloc` 是一个高效的内存分配器，设计用于减少内存碎片、提高分配效率，特别是在高并发应用中表现出色。它广泛用于 Redis、MongoDB、ClickHouse 等高性能系统中。以下是 `jemalloc` 的使用步骤和关键注意事项。
 
@@ -1288,7 +835,7 @@ HEAPPROFILE=/tmp/heap_profile ./my_program
 
 通过合理调优，`jemalloc` 可以大幅提升内存管理的效率，减少碎片化，同时降低多线程环境下的锁竞争问题。
 
----
+------
 
 ### **1. 安装 jemalloc**
 
@@ -1335,7 +882,7 @@ HEAPPROFILE=/tmp/heap_profile ./my_program
    sudo ldconfig
    ```
 
----
+------
 
 ### **2. 使用 jemalloc**
 
@@ -1363,7 +910,7 @@ HEAPPROFILE=/tmp/heap_profile ./my_program
 g++ -o my_program my_program.cpp -Wl,--whole-archive -ljemalloc -Wl,--no-whole-archive
 ```
 
----
+------
 
 ### **3. 配置 jemalloc**
 
@@ -1371,13 +918,13 @@ g++ -o my_program my_program.cpp -Wl,--whole-archive -ljemalloc -Wl,--no-whole-a
 
 #### **（1）常用配置选项**
 
-| **环境变量**         | **描述**                                                           |
-| -------------------- | ------------------------------------------------------------------ |
+| **环境变量**         | **描述**                                                     |
+| -------------------- | ------------------------------------------------------------ |
 | `MALLOC_CONF`        | 全局配置选项，用于设置 `jemalloc` 行为，支持多个配置项用逗号分隔。 |
-| `MALLOC_STATS_PRINT` | 设置为 `1` 时，程序结束时会自动输出内存分配统计信息。              |
-| `opt.lg_chunk`       | 设置分配的最小大块内存大小，默认为 22（即 4MB）。                  |
-| `opt.lg_dirty_mult`  | 控制脏页比例，影响未使用内存的回收速度。                           |
-| `opt.prof`           | 启用分配性能分析，用于调试。                                       |
+| `MALLOC_STATS_PRINT` | 设置为 `1` 时，程序结束时会自动输出内存分配统计信息。        |
+| `opt.lg_chunk`       | 设置分配的最小大块内存大小，默认为 22（即 4MB）。            |
+| `opt.lg_dirty_mult`  | 控制脏页比例，影响未使用内存的回收速度。                     |
+| `opt.prof`           | 启用分配性能分析，用于调试。                                 |
 
 #### **（2）配置方法**
 
@@ -1392,7 +939,7 @@ g++ -o my_program my_program.cpp -Wl,--whole-archive -ljemalloc -Wl,--no-whole-a
 
   ```cpp
   #include <jemalloc/jemalloc.h>
-
+  
   int main() {
       size_t sz = 23; // 设置 lg_chunk
       mallctl("opt.lg_chunk", NULL, NULL, &sz, sizeof(sz));
@@ -1400,7 +947,7 @@ g++ -o my_program my_program.cpp -Wl,--whole-archive -ljemalloc -Wl,--no-whole-a
   }
   ```
 
----
+------
 
 ### **4. 调试与性能分析**
 
@@ -1448,7 +995,7 @@ int main() {
 }
 ```
 
----
+------
 
 ### **5. 注意事项**
 
@@ -1460,6 +1007,8 @@ int main() {
    - `jemalloc` 的设计高度优化了多线程环境下的内存分配，但线程模型复杂的应用仍需注意可能的锁竞争。
 4. **与其他内存工具的冲突**：
    - 如果使用了 `valgrind` 或 `asan` 进行内存检查，需要确保工具与 `jemalloc` 兼容。
+
+
 
 ## 内存分配
 
@@ -1482,7 +1031,7 @@ int main() {
   new
   ```
 
-  会在堆上分配内存，并返回指向该内存的指针。常见用法如下：
+   会在堆上分配内存，并返回指向该内存的指针。常见用法如下：
 
   ```cpp
   int* p = new int;  // 在堆上分配一个整数
@@ -1497,19 +1046,19 @@ int main() {
 
 - `std::string`
 
-  ：每个
+  ：每个 
 
   ```
   std::string
   ```
 
-  对象通常在堆上分配内存来存储字符串内容。当你使用
+   对象通常在堆上分配内存来存储字符串内容。当你使用 
 
   ```
   std::string
   ```
 
-  对象时，内部会自动管理内存。
+   对象时，内部会自动管理内存。
 
   ```cpp
   std::string str = "Hello, World!";  // 堆分配内存来存储字符串
@@ -1523,13 +1072,13 @@ int main() {
   std::vector
   ```
 
-  内部会为其元素在堆上分配内存。当你向
+   内部会为其元素在堆上分配内存。当你向 
 
   ```
   std::vector
   ```
 
-  添加元素时，底层的动态数组可能会重新分配内存。
+   添加元素时，底层的动态数组可能会重新分配内存。
 
   ```cpp
   std::vector<int> vec;  // 动态分配内存来存储 vector 的元素
@@ -1542,13 +1091,13 @@ int main() {
 
 ### 5. **`std::unique_ptr` 和 `std::shared_ptr`（智能指针）**
 
-- 智能指针本身会分配栈内存（例如
+- 智能指针本身会分配栈内存（例如 
 
   ```
   std::unique_ptr<int> ptr;
   ```
 
-  ），但它们所管理的对象通常是在堆上分配内存（例如
+  ），但它们所管理的对象通常是在堆上分配内存（例如 
 
   ```
   std::make_unique<int>(10)
@@ -1571,7 +1120,7 @@ int main() {
 
 ### 7. **类和结构体的成员变量**
 
-- 类和结构体的实例在栈上分配内存，但如果成员变量是指针或其他容器类型（如
+- 类和结构体的实例在栈上分配内存，但如果成员变量是指针或其他容器类型（如 
 
   ```
   std::string
@@ -1583,7 +1132,7 @@ int main() {
   std::vector
   ```
 
-  等），它们会在堆上分配内存。例如：
+   等），它们会在堆上分配内存。例如：
 
   ```cpp
   struct CellData {
@@ -1595,19 +1144,19 @@ int main() {
 
 ### 8. **`std::make_shared` 和 `std::make_unique`**
 
-- 使用
+- 使用 
 
   ```
   std::make_shared
   ```
 
-  或
+   或 
 
   ```
   std::make_unique
   ```
 
-  时，会在堆上分配内存给对象，并返回一个智能指针来管理该内存。
+   时，会在堆上分配内存给对象，并返回一个智能指针来管理该内存。
 
   ```cpp
   auto ptr = std::make_shared<int>(10);  // 在堆上分配内存
@@ -1641,11 +1190,11 @@ int main() {
 
 - 如果你返回一个局部对象，并且编译器没有应用返回值优化（RVO），它可能会在堆上分配内存来存储返回的对象，尽管现代编译器通常会尽量避免这种情况。
 
-### 15. **动态加载的库（DLL 或共享库）**
+### 15. **动态加载的库（DLL或共享库）**
 
 - 如果在程序中动态加载库（如通过 `dlopen` 或 `LoadLibrary`），则可能涉及到堆内存的分配，尤其是在加载过程中。
 
----
+------
 
 ### 小结
 
@@ -1654,6 +1203,10 @@ int main() {
 - **栈分配**：局部变量、函数参数、对象实例。
 - **堆分配**：通过 `new`、`malloc`、`std::vector`、`std::string` 等容器进行的内存分配。
 - **动态分配**：智能指针、线程、Lambda 表达式等在堆上分配内存。
+
+
+
+
 
 ## 内存管理
 
@@ -1787,6 +1340,8 @@ std::weak_ptr<int> weak = shared;  // 不增加引用计数
 
 通过合理使用智能指针和 RAII 习惯，C++ 程序员可以高效、可靠地进行内存管理，避免内存泄漏和其他常见的内存错误。
 
+
+
 ## RAII
 
 RAII（Resource Acquisition Is Initialization，资源获取即初始化）是 C++ 中一种广泛使用的编程习惯，它通过将资源（如内存、文件句柄、网络连接等）的管理与对象的生命周期绑定来确保资源的自动释放。RAII 习惯能够有效地防止资源泄漏，并简化资源管理。
@@ -1825,17 +1380,17 @@ RAII 的核心思想是：**资源的分配与对象的构造绑定在一起，�
                throw std::runtime_error("Failed to open file");
            }
        }
-
+   
        ~FileGuard() {
            if (file) {
                fclose(file);
            }
        }
-
+   
    private:
        FILE* file = nullptr;
    };
-
+   
    void readFile() {
        FileGuard guard("file.txt");
        // 在 guard 生命周期内，文件已打开
@@ -1849,7 +1404,7 @@ RAII 的核心思想是：**资源的分配与对象的构造绑定在一起，�
 
    ```cpp
    std::mutex mtx;
-
+   
    void threadSafeFunction() {
        std::lock_guard<std::mutex> lock(mtx);  // 自动加锁
        // 临界区代码
@@ -1867,17 +1422,17 @@ RAII 的核心思想是：**资源的分配与对象的构造绑定在一起，�
        DBConnection(const std::string& dbName) {
            conn = connectToDatabase(dbName);
        }
-
+   
        ~DBConnection() {
            if (conn) {
                closeDatabaseConnection(conn);
            }
        }
-
+   
    private:
        DatabaseConnection* conn;
    };
-
+   
    void useDatabase() {
        DBConnection db("my_database");
        // 在 db 对象的生命周期内，数据库连接有效
@@ -1923,7 +1478,11 @@ RAII 适用于任何需要手动管理资源的场景，特别是在以下情况
 
 RAII 是 C++ 中最重要的编程习惯之一，它通过将资源管理与对象生命周期绑定来确保资源的自动释放，减少了内存泄漏、双重释放和其他资源管理错误的风险。RAII 能够使 C++ 编程更加安全、可靠和易于维护，是 C++ 编程中不可或缺的技巧。
 
----
+
+
+------
+
+
 
 # 并发
 
@@ -1931,7 +1490,7 @@ RAII 是 C++ 中最重要的编程习惯之一，它通过将资源管理与对�
 
 ** (oneAPI Threading Building Blocks)** 提供了一系列高效的并行化工具和模式，适合构建多线程的高性能应用程序。以下是 oneTBB 的常用用法与示例：
 
----
+------
 
 ### **1. 并行循环：`parallel_for`**
 
@@ -1966,7 +1525,7 @@ int main() {
 - 自动分割任务以充分利用 CPU 核心。
 - 支持循环范围自定义，如 `tbb::blocked_range`。
 
----
+------
 
 ### **2. 并行归约：`parallel_reduce`**
 
@@ -1984,8 +1543,8 @@ int main() {
 
     // 并行归约求和
     int sum = tbb::parallel_reduce(
-        tbb::blocked_range<size_t>(0, data.size()),
-        0,
+        tbb::blocked_range<size_t>(0, data.size()), 
+        0, 
         [&data](const tbb::blocked_range<size_t>& range, int local_sum) {
             for (size_t i = range.begin(); i < range.end(); ++i) {
                 local_sum += data[i];
@@ -2005,7 +1564,7 @@ int main() {
 - 可并行计算局部值并合并结果。
 - 合并操作由用户指定（如 `std::plus`）。
 
----
+------
 
 ### **3. 并行扫描：`parallel_scan`**
 
@@ -2023,7 +1582,7 @@ int main() {
     std::vector<int> result(data.size());
 
     tbb::parallel_scan(
-        tbb::blocked_range<size_t>(0, data.size()),
+        tbb::blocked_range<size_t>(0, data.size()), 
         0,
         [&data, &result](const tbb::blocked_range<size_t>& range, int sum, bool is_final_scan) {
             for (size_t i = range.begin(); i < range.end(); ++i) {
@@ -2051,7 +1610,7 @@ int main() {
 - 支持双遍扫描（第一遍计算总和，第二遍更新结果）。
 - 适用于累计和等需要前后依赖的场景。
 
----
+------
 
 ### **4. 并行任务组：`task_group`**
 
@@ -2086,7 +1645,7 @@ int main() {
 - 动态创建任务。
 - `wait` 方法阻塞当前线程，直到所有任务完成。
 
----
+------
 
 ### **5. 并行流水线：`parallel_pipeline`**
 
@@ -2107,14 +1666,14 @@ int main() {
     tbb::parallel_pipeline(
         4, // 并行度
         tbb::make_filter<void, int>(
-            tbb::filter_mode::serial_in_order,
+            tbb::filter_mode::serial_in_order, 
             [&data, i = 0]() mutable -> int {
                 if (i < data.size()) return data[i++] = i;
                 return tbb::filter::end_of_stream;
             }
         ) &
         tbb::make_filter<int, void>(
-            tbb::filter_mode::parallel,
+            tbb::filter_mode::parallel, 
             [](int value) {
                 std::cout << "Processed: " << value << std::endl;
             }
@@ -2130,7 +1689,7 @@ int main() {
 - 可定义多阶段流水线，每个阶段可以是串行或并行。
 - 适合流式数据处理。
 
----
+------
 
 ### **6. 并行排序：`parallel_sort`**
 
@@ -2163,7 +1722,7 @@ int main() {
 - 使用并行分治法对数据排序。
 - 性能优于单线程排序。
 
----
+------
 
 ### **7. 使用自定义任务：`tbb::task`**
 
@@ -2193,7 +1752,7 @@ int main() {
 }
 ```
 
----
+------
 
 ### **8. 高级同步工具**
 
@@ -2233,7 +1792,7 @@ int main() {
 }
 ```
 
----
+------
 
 ### **总结**
 
@@ -2245,6 +1804,12 @@ int main() {
 
 如果有具体场景需求，可以针对性优化实现！
 
+
+
+
+
+
+
 # HTTP
 
 以下是如何使用 `cpr` 库的详细指南，包括安装、基本用法和进阶功能示例。
@@ -2254,17 +1819,13 @@ int main() {
 ## **安装**
 
 ### **1. 使用 vcpkg**
-
 ```bash
 vcpkg install cpr
 ```
-
 使用 `vcpkg` 安装后，确保项目正确集成了 `vcpkg` 的工具链。
 
 ### **2. 使用 CMake**
-
 在项目的 `CMakeLists.txt` 中添加以下内容：
-
 ```cmake
 include(FetchContent)
 FetchContent_Declare(
@@ -2282,7 +1843,6 @@ target_link_libraries(your_target PRIVATE cpr::cpr)
 ## **基本用法**
 
 ### **1. 发送 GET 请求**
-
 ```cpp
 #include <cpr/cpr.h>
 #include <iostream>
@@ -2298,7 +1858,6 @@ int main() {
 ---
 
 ### **2. 发送 POST 请求**
-
 ```cpp
 #include <cpr/cpr.h>
 #include <iostream>
@@ -2317,7 +1876,6 @@ int main() {
 ---
 
 ### **3. 添加请求头**
-
 ```cpp
 #include <cpr/cpr.h>
 #include <iostream>
@@ -2335,7 +1893,6 @@ int main() {
 ---
 
 ### **4. 发送 URL 参数**
-
 ```cpp
 #include <cpr/cpr.h>
 #include <iostream>
@@ -2353,7 +1910,6 @@ int main() {
 ---
 
 ### **5. 设置超时**
-
 ```cpp
 #include <cpr/cpr.h>
 #include <iostream>
@@ -2372,7 +1928,6 @@ int main() {
 ---
 
 ### **6. 上传文件**
-
 ```cpp
 #include <cpr/cpr.h>
 #include <iostream>
@@ -2393,9 +1948,7 @@ int main() {
 ---
 
 ### **7. 下载文件**
-
 虽然 `cpr` 不直接支持文件下载，但可以用以下方法实现：
-
 ```cpp
 #include <cpr/cpr.h>
 #include <fstream>
@@ -2418,7 +1971,6 @@ int main() {
 ---
 
 ### **8. 设置代理**
-
 ```cpp
 #include <cpr/cpr.h>
 #include <iostream>
@@ -2436,9 +1988,7 @@ int main() {
 ---
 
 ### **9. 处理 JSON 数据**
-
 配合 `nlohmann/json` 库，可以解析返回的 JSON 数据：
-
 ```cpp
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
@@ -2459,7 +2009,6 @@ int main() {
 ---
 
 ## **常见选项**
-
 | **选项**              | **描述**                     |
 | --------------------- | ---------------------------- |
 | `cpr::Url`            | 设置请求的 URL               |
@@ -2472,6 +2021,10 @@ int main() {
 | `cpr::Authentication` | 添加基本认证（用户名和密码） |
 
 ---
+
+
+
+
 
 # redis
 
@@ -2549,7 +2102,6 @@ int main() {
 ```
 
 在这个简单的示例中，我们：
-
 1. 连接到本地 Redis 服务。
 2. 设置并获取一个键值对。
 
@@ -2862,9 +2414,303 @@ int main() {
 
 OpenCV 提供了非常丰富的图像和视频处理功能，是图像处理、计算机视觉项目中非常强大的工具。
 
+
+
+
+
+
+
+------
+
+# turbojpeg使用
+
+下面给出 **TurboJPEG**（libjpeg‑turbo 提供的高性能 JPEG 编解码 API）的使用方法，包括安装、C/C++ 调用示例，以及 Python、Node.js、Java 等常见语言的接入办法，并附带详细代码片段和关键参数说明。
+
+## 一、安装与依赖
+
+1. **安装 libjpeg‑turbo**
+
+   - **Linux**（以 Ubuntu 为例）：
+
+     ```
+     bashCopyEditsudo apt-get update  
+     sudo apt-get install libjpeg‑turbo8‑dev libjpeg‑turbo-progs  
+     ```
+
+     此包同时提供了 `turbojpeg.h` 头文件和 `libturbojpeg.so` 动态库[libjpeg-turbo.org](https://libjpeg-turbo.org/Documentation/Documentation?utm_source=chatgpt.com)。
+
+   - **macOS**：
+
+     ```
+     bash
+     
+     
+     CopyEdit
+     brew install jpeg-turbo
+     ```
+
+     库文件位于 `/usr/local/opt/jpeg-turbo/lib`，头文件在 `/usr/local/opt/jpeg-turbo/include`[skia.googlesource.com](https://skia.googlesource.com/external/github.com/libjpeg-turbo/libjpeg-turbo/%2B/9cd4a15c8a4b716bfa31f889455197e5bffbe7ab/BUILDING.md?utm_source=chatgpt.com)。
+
+   - **Windows**：
+      从官方 SourceForge 下载预编译二进制，解压后将 `include` 和 `lib` 路径加入环境变量[sourceforge.net](https://sourceforge.net/projects/libjpeg-turbo/?utm_source=chatgpt.com)。
+
+2. **Python 绑定（PyTurboJPEG / turbojpeg）**
+
+   - 推荐使用 PyPI 上的 [PyTurboJPEG](https://pypi.org/project/PyTurboJPEG/)：
+
+     ```
+     bash
+     
+     
+     CopyEdit
+     pip install PyTurboJPEG
+     ```
+
+     该包会寻找系统已安装的 libjpeg‑turbo 动态库；如果未自动定位，可手动指定路径：
+
+     ```
+     pythonCopyEditfrom turbojpeg import TurboJPEG  
+     jpeg = TurboJPEG('/usr/lib64/libturbojpeg.so')  
+     ```
+
+[PyPI](https://pypi.org/project/PyTurboJPEG/?utm_source=chatgpt.com)[GitHub](https://github.com/lilohuang/PyTurboJPEG/issues/27?utm_source=chatgpt.com)。
+
+- 另有轻量 [turbojpeg](https://pypi.org/project/turbojpeg/) 包，安装命令：
+
+  ```
+  bash
+  
+  
+  CopyEdit
+  pip install turbojpeg
+  ```
+
+  支持图像的无损旋转、变换等操作[PyPI](https://pypi.org/project/turbojpeg/?utm_source=chatgpt.com)。
+
+## 二、C/C++ 使用示例
+
+### 1. 基本解码
+
+```
+cCopyEdit#include <turbojpeg.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    FILE *fp = fopen("input.jpg", "rb");
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    rewind(fp);
+    unsigned char *jpegBuf = malloc(size);
+    fread(jpegBuf, 1, size, fp);
+    fclose(fp);
+
+    tjhandle tj = tjInitDecompress();                               // 初始化解码器
+    int width, height, jpegSubsamp, jpegColorspace;
+    tjDecompressHeader3(tj, jpegBuf, size, &width, &height, &jpegSubsamp, &jpegColorspace);
+                                                                   // 读取图像尺寸和格式
+    unsigned char *imgBuf = malloc(width * height * tjPixelSize[TJPF_RGB]);
+    tjDecompress2(tj, jpegBuf, size, imgBuf, width, 0 /*pitch*/, height, TJPF_RGB, TJFLAG_FASTDCT);
+                                                                   // 解码到 RGB 缓冲区
+    tjDestroy(tj);                                                  // 释放资源
+    free(jpegBuf); free(imgBuf);
+    return 0;
+}
+```
+
+- `tjInitDecompress()` 创建解码句柄；
+- `tjDecompressHeader3()` 获取 JPEG 原始宽高、采样格式等；
+- `tjDecompress2()` 完成实际的像素解码，`TJPF_RGB` 表示输出 RGB 三通道，`TJFLAG_FASTDCT` 为快速但略有精度损失的 DCT 算法选项[GitHub](https://github.com/libjpeg-turbo/libjpeg-turbo?utm_source=chatgpt.com)。
+
+### 2. 基本编码
+
+```
+cCopyEdit#include <turbojpeg.h>
+// 假设已有 RGB 像素缓冲区 rawBuf，大小为 width*height*3
+
+tjhandle tj = tjInitCompress();
+unsigned char *jpegBuf = NULL;
+unsigned long jpegSize = 0;
+tjCompress2(tj, rawBuf, width, 0/*pitch*/, height, TJPF_RGB,
+            &jpegBuf, &jpegSize, TJSAMP_420, 85, TJFLAG_FASTDCT);
+            // 4:2:0 子采样 + 85 质量 + 快速 DCT
+fwrite(jpegBuf, jpegSize, 1, fopen("out.jpg","wb"));
+tjDestroy(tj);
+tjFree(jpegBuf);
+```
+
+- `tjCompress2()` 的关键参数：子采样类型（如 `TJSAMP_420`）、质量（0–100）、标志位[libjpeg-turbo.org](https://libjpeg-turbo.org/Documentation/Documentation?utm_source=chatgpt.com)。
+
+
+
+## 1. 编译 OpenCV 时启用 libjpeg‑turbo
+
+### 1.1 安装 libjpeg‑turbo
+
+- **Ubuntu/Debian**：
+
+  ```
+  bashCopyEditsudo apt-get update  
+  sudo apt-get install libjpeg-turbo8-dev libjpeg-turbo-progs
+  ```
+
+  包含头文件和共享库 `libturbojpeg.so` [Stack Overflow](https://stackoverflow.com/questions/10465209/how-to-compile-opencv-with-libjpeg-turbo?utm_source=chatgpt.com).
+
+- **macOS（Homebrew）**：
+
+  ```
+  bash
+  
+  
+  CopyEdit
+  brew install jpeg-turbo
+  ```
+
+  头文件在 `/usr/local/opt/jpeg-turbo/include`，库在 `/usr/local/opt/jpeg-turbo/lib` [GitHub](https://github.com/lilohuang/PyTurboJPEG/blob/master/README.md?utm_source=chatgpt.com).
+
+- **Windows**：
+   从 SourceForge 下载预编译包，将 `include` 和 `lib` 目录添加到 VS 项目设置或环境变量中 [learnopencv.com](https://learnopencv.com/tag/turbojpeg/?utm_source=chatgpt.com).
+
+### 1.2 配置 OpenCV
+
+在 OpenCV 根目录下执行 CMake 时开启 JPEG 支持并指向 libjpeg‑turbo：
+
+```
+bashCopyEditcmake -DWITH_JPEG=ON \
+      -DBUILD_JPEG=OFF \
+      -DJPEG_INCLUDE_DIR=/path/to/libjpeg-turbo/include \
+      -DJPEG_LIBRARY=/path/to/libjpeg-turbo/lib/libjpeg.a \
+      /path/to/opencv
+```
+
+上述命令中，`-DBUILD_JPEG=OFF` 防止 OpenCV 自己编译 libjpeg，而是使用已安装的 libjpeg‑turbo [Stack Overflow](https://stackoverflow.com/questions/10465209/how-to-compile-opencv-with-libjpeg-turbo/10465735?utm_source=chatgpt.com).
+
+
+
+
+
+### 示例代码整合
+
+```
+cppCopyEdit#include <turbojpeg.h>
+#include <opencv2/opencv.hpp>
+#include <vector>
+#include <fstream>
+
+cv::Mat turboJpegToMat(const std::string& filename) {
+    // 读文件
+    std::ifstream ifs(filename, std::ios::binary);
+    std::vector<unsigned char> buf((std::istreambuf_iterator<char>(ifs)),
+                                    std::istreambuf_iterator<char>());
+    // 初始化
+    tjhandle tj = tjInitDecompress();
+    int w, h, subsamp, colorspace;
+    tjDecompressHeader3(tj, buf.data(), buf.size(), &w, &h, &subsamp, &colorspace);
+    // 解码到 Mat
+    cv::Mat img(h, w, CV_8UC3);
+    tjDecompress2(tj, buf.data(), buf.size(),
+                  img.data, w, 0, h,
+                  TJPF_BGR, TJFLAG_FASTDCT);
+    tjDestroy(tj);
+    return img;
+}
+
+int main() {
+    cv::Mat img = turboJpegToMat("input.jpg");
+    cv::imshow("TurboJPEG", img);
+    cv::waitKey();
+    return 0;
+}
+```
+
+此例展示如何一行代码将 TurboJPEG 解码结果映射到 `cv::Mat` 的内存 [filter-failure.eu](https://filter-failure.eu/2015/06/create-an-opencv-2-matrix-from-a-jpeg-image-in-a-buffer-2/?utm_source=chatgpt.com).
+
+------
+
+## 3. 性能与兼容性
+
+- **性能提升**：在 Linux x86 系统上，libjpeg‑turbo 利用 SIMD 指令集（SSE2/AVX2/NEON）使得解码速度比传统 libjpeg 快 2–6 倍 [libjpeg-turbo.org](https://libjpeg-turbo.org/?utm_source=chatgpt.com).
+- **与 `cv::imdecode` 比较**：即便已使用 libjpeg‑turbo 编译 OpenCV，自行调用 TurboJPEG 解码仍可获得约 10–15% 的额外性能增益 [filter-failure.eu](https://filter-failure.eu/2015/06/create-an-opencv-2-matrix-from-a-jpeg-image-in-a-buffer-2/?utm_source=chatgpt.com)[learnopencv.com](https://learnopencv.com/efficient-image-loading/?utm_source=chatgpt.com).
+- **OpenCV 版本**：建议 OpenCV ≥4.5 且使用 `IMREAD_UNCHANGED` 以避免多余的内存拷贝；若需要透明通道，可改用 `CV_8UC4` 和 `TJPF_BGRA` [docs.ros.org](https://docs.ros.org/en/melodic/api/compressed_image_transport/html/compressed__subscriber_8cpp_source.html?utm_source=chatgpt.com).
+
+------
+
+## 4. 小结
+
+1. **编译时启用**：通过 CMake 开关使用系统 libjpeg‑turbo。
+2. **运行时解码**：用 `tjDecompressHeader3` + `tjDecompress2` 直解到 `cv::Mat`。
+3. **显著加速**：SIMD 加速带来 2–6× 提速，自解码优于 `cv::imdecode` 约 10–15%。
+4. **兼容性**：跨平台（Windows/Linux/macOS），支持 RGB/BGR/BGRA 格式。
+
+如此即可在基于 OpenCV 的项目中，轻松获得高性能 JPEG 解码体验。
+
+
+
+
+
+
+
+## 完整示例代码
+
+```
+cppCopyEdit#include <turbojpeg.h>
+#include <opencv2/opencv.hpp>
+#include <fstream>
+
+int main() {
+    // 1. 读取图像到 cv::Mat（BGR）
+    cv::Mat img = cv::imread("input.png", cv::IMREAD_COLOR);
+    if (img.empty()) {
+        std::cerr << "无法读取 input.png\n";
+        return -1;
+    }
+
+    // 2. 初始化 TurboJPEG 压缩器
+    tjhandle compressor = tjInitCompress();
+
+    // 3. 调用压缩
+    unsigned char* jpegBuf = nullptr;
+    unsigned long jpegSize = 0;
+    tjCompress2(compressor,
+                img.data, img.cols, img.step, img.rows,
+                TJPF_BGR,
+                &jpegBuf, &jpegSize,
+                TJSAMP_420, 90, TJFLAG_FASTDCT);
+
+    // 4. 将结果写入文件
+    std::ofstream out("output.jpg", std::ios::binary);
+    out.write(reinterpret_cast<char*>(jpegBuf), jpegSize);
+    out.close();
+
+    // 5. 清理
+    tjFree(jpegBuf);
+    tjDestroy(compressor);
+
+    std::cout << "已生成 output.jpg，大小: " << jpegSize << " 字节\n";
+    return 0;
+}
+```
+
+------
+
+## 4. 性能与注意事项
+
+- **性能**：SIMD 加速（SSE2/AVX2/NEON）可带来 **2–6×** 的速度提升，相较 libjpeg 和 OpenCV 内置 codec都有显著优势[ridgesolutions.ie](https://www.ridgesolutions.ie/index.php/2019/12/10/libjpeg-example-encode-jpeg-to-memory-buffer-instead-of-file/?utm_source=chatgpt.com)[Stack Overflow](https://stackoverflow.com/questions/tagged/libjpeg-turbo?tab=Votes&utm_source=chatgpt.com)。
+- **色度子采样**：`TJSAMP_420` 对大多数照片能兼顾质量与文件大小；如需无损质量可选 `TJSAMP_444` 或 `TJFLAG_ACCURATEDCT`[OpenCV](https://forum.opencv.org/t/how-to-set-flags-specific-to-libjpeg-turbo/715?utm_source=chatgpt.com)。
+- **线程安全**：同一 `tjhandle` 不可跨线程重入，需每线程各自 `tjInitCompress()`/`tjDestroy()`。
+- **Mat 格式**：若你的 Mat 是 RGB、灰度或带 alpha 通道，也可分别指定为 `TJPF_RGB`、`TJPF_GRAY`、`TJPF_BGRA` 等[jpeg-turbo.dpldocs.info](https://jpeg-turbo.dpldocs.info/libjpeg.turbojpeg.tjEncodeYUV2.html?utm_source=chatgpt.com)。
+
+
+
+如此即可在 C++/OpenCV 项目中，**直接将 `cv::Mat` 编码成 JPEG**，充分利用 libjpeg‑turbo 的高性能特性。
+
+------
+
+
+
 # 包管理器
 
-## vcpkg
+## vcpkg 
 
 source ~/.bashrc
 
@@ -2876,10 +2722,9 @@ vcpkg install --triplet x64-linux
 
 # 日志
 
-`spdlog` 是一个快速、简单、高效的 C++日志库。它支持异步、同步日志记录，并提供丰富的日志格式化选项。以下是 `spdlog` 的基本使用方法：
+`spdlog` 是一个快速、简单、高效的C++日志库。它支持异步、同步日志记录，并提供丰富的日志格式化选项。以下是 `spdlog` 的基本使用方法：
 
 ### 1. 安装 `spdlog`
-
 如果你已经通过 `vcpkg` 安装了 `spdlog`，可以直接包含它的头文件使用：
 
 ```cpp
@@ -2887,7 +2732,6 @@ vcpkg install --triplet x64-linux
 ```
 
 ### 2. 基本用法
-
 `spdlog` 的基本用法非常简单，可以直接使用默认的控制台日志记录器：
 
 ```cpp
@@ -2906,25 +2750,21 @@ int main() {
 ```
 
 ### 3. 创建日志记录器
-
 你可以创建不同类型的日志记录器，例如控制台日志记录器和文件日志记录器。
 
 #### 控制台日志记录器
-
 ```cpp
 auto console = spdlog::stdout_color_mt("console");
 console->info("This is a colored console log.");
 ```
 
 #### 文件日志记录器
-
 ```cpp
 auto file_logger = spdlog::basic_logger_mt("file_logger", "logs/basic-log.txt");
 file_logger->info("This log goes to a file.");
 ```
 
 ### 4. 设置日志格式
-
 `spdlog` 支持自定义日志格式，例如时间戳、日志级别、消息内容等。可以通过以下代码设置格式：
 
 ```cpp
@@ -2938,7 +2778,6 @@ spdlog::set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");
 - `%v`：日志消息内容
 
 ### 5. 异步日志
-
 `spdlog` 支持异步日志，可以通过以下代码启用：
 
 ```cpp
@@ -2950,7 +2789,6 @@ async_file_logger->info("This is an async log message.");
 ```
 
 ### 6. 设置日志级别
-
 可以设置全局或特定记录器的日志级别。例如，只输出警告及以上级别的日志：
 
 ```cpp
@@ -2959,7 +2797,6 @@ file_logger->set_level(spdlog::level::info); // 特定记录器设置
 ```
 
 ### 7. 日志级别
-
 `spdlog` 支持以下日志级别：
 
 - `trace`
@@ -2971,7 +2808,6 @@ file_logger->set_level(spdlog::level::info); // 特定记录器设置
 - `off`
 
 ### 示例：完整代码
-
 下面是一个完整的示例：
 
 ```cpp
@@ -2999,9 +2835,15 @@ int main() {
 
 通过这些基本操作，`spdlog` 可以帮助你实现高效的日志记录。
 
+
+
+
+
 # 错误处理
 
 在 **`try`** 块中，如果引发某个异常，类型与该异常的类型匹配的第一个关联 **`catch`** 块将捕获该异常。 换言之，执行将从 **`throw`** 语句跳转到 **`catch`** 语句。 如果未找到可用的 catch 块，则调用 `std::terminate` 并且程序会退出。 在 C++ 中可以引发任何类型；但是，我们建议引发直接或间接派生自 `std::exception` 的类型。 在前面的示例中，异常类型 [`invalid_argument`](https://learn.microsoft.com/zh-cn/cpp/standard-library/invalid-argument-class?view=msvc-170) 是在标准库的 [``](https://learn.microsoft.com/zh-cn/cpp/standard-library/stdexcept?view=msvc-170) 头文件中定义的。 C++ 既不提供也不需要 **`finally`** 块来确保在引发异常时释放所有资源。 资源采集是使用智能指针的初始化 (RAII) 习语，它提供所需的功能来清理资源。
+
+
 
 ```C++
 #include <iostream>
@@ -3049,22 +2891,29 @@ int main()
 }
 ```
 
+
+
 # json
 
 ```
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
+
+// 序列化 将一个结构体对象（如 ScanMode）转换为 JSON 字符串
+std::string bs = json(scanMode).dump();
+// string--->结构体
+json::parse(stepNumberStr).get_to(stepNumber);
 ```
 
 对于 `ScanRegionStructNew` 结构体，它包含多个 `std::vector<int>` 类型的成员，使用 `nlohmann::json` 进行 JSON 序列化和反序列化时，我们需要为这个结构体提供适当的 `to_json` 和 `from_json` 函数。这将允许 JSON 库将 JSON 数据正确地映射到 `ScanRegionStructNew` 的成员。
 
-1.  使用 `nlohmann::json` 需要为自定义结构体提供适当的 `to_json` 和 `from_json` 方法来实现 JSON 和结构体之间的相互转换。
+1. 使用 `nlohmann::json` 需要为自定义结构体提供适当的 `to_json` 和 `from_json` 方法来实现 JSON 和结构体之间的相互转换。
 
-2.  `get_to` 方法需要目标对象的成员类型与 JSON 数据兼容，因此在定义 `to_json` 和 `from_json` 时，需要确保字段匹配。
+2. `get_to` 方法需要目标对象的成员类型与 JSON 数据兼容，因此在定义 `to_json` 和 `from_json` 时，需要确保字段匹配。
 
-3.
+3. 
 
-4.          //nlohmann::json 库将一个结构体对象（如 ScanMode）转换为 JSON 字符串
+4.        //nlohmann::json 库将一个结构体对象（如 ScanMode）转换为 JSON 字符串
            std::string bs = json(scanModel).dump();
 
 ### 1. `ScanRegionStructNew` 的 `to_json` 和 `from_json` 函数
@@ -3134,8 +2983,8 @@ int main() {
     json j = json::parse(jsonString);
     // 自动解析到结构体
     Person person = j.get<Person>();  // 这里自动调用了 from_json
-
-
+        
+        
         nlohmann::json::parse(scanAreaStr).get_to(scanRegion);
         // 打印结果
         std::cout << "white_region size: " << scanRegion.white_region.size() << std::endl;
@@ -3151,11 +3000,12 @@ int main() {
 ### 3. 解释
 
 - `to_json` 函数：将 `ScanRegionStructNew` 类型的结构体序列化为 JSON 对象。在这个函数中，我们创建了一个包含各个字段的 JSON 对象，并将其赋值给 `j`（即目标 JSON）。
+  
 - `from_json` 函数：将 JSON 对象反序列化为 `ScanRegionStructNew` 结构体。在这里，我们从 JSON 对象中提取每个字段并将其赋值给 `ScanRegionStructNew` 结构体的相应成员。
 
 - `get_to` 方法：该方法从 JSON 对象中获取数据并填充到目标对象中。它将 JSON 中的值转换为目标类型，前提是 `from_json` 和 `to_json` 方法已正确定义。
 
-## JSON 对象和文件
+##  JSON 对象和文件
 
 在 C++ 中，使用 `nlohmann::json` 库可以轻松地操作 JSON 数据，并且通过文件 I/O 操作将 JSON 对象保存到文件或从文件加载。下面是如何在 C++ 中使用 JSON 对象和文件进行操作的基本示例。
 
@@ -3289,6 +3139,8 @@ int main() {
 
 这些是 C++ 中与 JSON 对象和文件操作的基本用法。通过这些操作，你可以轻松地将 JSON 数据保存到文件或者从文件读取数据。
 
+
+
 # pqsql
 
 ```c++
@@ -3296,122 +3148,113 @@ int main() {
 using namespace pqxx;
 ```
 
+
+
 # 时间
 
 在 C++ 中处理时间有多种方式，主要包括使用标准库提供的时间相关功能和一些第三方库。这里将对常用的时间处理方式进行总结：
 
 ### 1. **C 标准库 `<ctime>`**
+   这是 C++ 中最传统的时间处理方法，提供了对系统时间和日期的访问。
 
-这是 C++ 中最传统的时间处理方法，提供了对系统时间和日期的访问。
+   - **`std::time_t`**：表示自纪元（通常是 1970 年 1 月 1 日 00:00:00 UTC）以来的秒数。
+   - **`std::tm`**：表示日期和时间的结构体，可以通过 `localtime()` 和 `gmtime()` 转换为本地时间或 UTC 时间。
+   - **`std::time(nullptr)`**：获取当前的时间戳（自纪元以来的秒数）。
+   - **`std::difftime`**：计算两个 `std::time_t` 时间戳之间的差值，返回 `double` 类型（秒数差）。
+   - **`std::strftime`**：格式化时间为字符串。
 
-- **`std::time_t`**：表示自纪元（通常是 1970 年 1 月 1 日 00:00:00 UTC）以来的秒数。
-- **`std::tm`**：表示日期和时间的结构体，可以通过 `localtime()` 和 `gmtime()` 转换为本地时间或 UTC 时间。
-- **`std::time(nullptr)`**：获取当前的时间戳（自纪元以来的秒数）。
-- **`std::difftime`**：计算两个 `std::time_t` 时间戳之间的差值，返回 `double` 类型（秒数差）。
-- **`std::strftime`**：格式化时间为字符串。
+   #### 示例：
+   ```cpp
+   #include <iostream>
+   #include <ctime>
 
-#### 示例：
+   int main() {
+       std::time_t now = std::time(nullptr);  // 获取当前时间戳
+       std::tm* localTime = std::localtime(&now);  // 获取本地时间
 
-```cpp
-#include <iostream>
-#include <ctime>
+       std::cout << "当前时间: " << 1900 + localTime->tm_year << "-"
+                 << 1 + localTime->tm_mon << "-"
+                 << localTime->tm_mday << " "
+                 << localTime->tm_hour << ":"
+                 << localTime->tm_min << ":"
+                 << localTime->tm_sec << std::endl;
 
-int main() {
-    std::time_t now = std::time(nullptr);  // 获取当前时间戳
-    std::tm* localTime = std::localtime(&now);  // 获取本地时间
-
-    std::cout << "当前时间: " << 1900 + localTime->tm_year << "-"
-              << 1 + localTime->tm_mon << "-"
-              << localTime->tm_mday << " "
-              << localTime->tm_hour << ":"
-              << localTime->tm_min << ":"
-              << localTime->tm_sec << std::endl;
-
-    return 0;
-}
-```
+       return 0;
+   }
+   ```
 
 ### 2. **C++11 `<chrono>` 库**
+   C++11 引入了 `<chrono>` 库，提供了更精确和灵活的时间测量方式，支持以不同精度（如毫秒、微秒、纳秒等）表示时间。
 
-C++11 引入了 `<chrono>` 库，提供了更精确和灵活的时间测量方式，支持以不同精度（如毫秒、微秒、纳秒等）表示时间。
+   - **`std::chrono::duration`**：表示时间段，可以使用不同的单位（如秒、毫秒、分钟等）。
+   - **`std::chrono::time_point`**：表示某一时刻的时间点。
+   - **`std::chrono::system_clock`**：表示系统时间，可以获取当前时间。
+   - **`std::chrono::steady_clock`**：提供一个不受系统时间修改影响的时钟，通常用于测量时间间隔。
+   - **`std::chrono::high_resolution_clock`**：提供最高精度的时钟。
 
-- **`std::chrono::duration`**：表示时间段，可以使用不同的单位（如秒、毫秒、分钟等）。
-- **`std::chrono::time_point`**：表示某一时刻的时间点。
-- **`std::chrono::system_clock`**：表示系统时间，可以获取当前时间。
-- **`std::chrono::steady_clock`**：提供一个不受系统时间修改影响的时钟，通常用于测量时间间隔。
-- **`std::chrono::high_resolution_clock`**：提供最高精度的时钟。
+   #### 示例：
+   ```cpp
+   #include <iostream>
+   #include <chrono>
+   #include <thread>
 
-#### 示例：
+   int main() {
+       auto start = std::chrono::high_resolution_clock::now();  // 获取当前时间点
 
-```cpp
-#include <iostream>
-#include <chrono>
-#include <thread>
+       std::this_thread::sleep_for(std::chrono::seconds(2));  // 模拟延时
 
-int main() {
-    auto start = std::chrono::high_resolution_clock::now();  // 获取当前时间点
+       auto end = std::chrono::high_resolution_clock::now();  // 获取结束时间点
+       std::chrono::duration<double> elapsed = end - start;  // 计算时间差
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));  // 模拟延时
-
-    auto end = std::chrono::high_resolution_clock::now();  // 获取结束时间点
-    std::chrono::duration<double> elapsed = end - start;  // 计算时间差
-
-    std::cout << "程序运行时间: " << elapsed.count() << " 秒" << std::endl;
-    return 0;
-}
-```
+       std::cout << "程序运行时间: " << elapsed.count() << " 秒" << std::endl;
+       return 0;
+   }
+   ```
 
 ### 3. **时间比较和差值**
+   无论是使用 `std::time_t` 还是 `std::chrono`，都可以比较不同时间点的差异。两者之间的比较方式有所不同：
 
-无论是使用 `std::time_t` 还是 `std::chrono`，都可以比较不同时间点的差异。两者之间的比较方式有所不同：
+   - **使用 `std::time_t`**：
+     - `std::difftime` 用于计算时间差，返回类型为 `double`（秒差）。
+   - **使用 `std::chrono`**：
+     - 可以使用 `std::chrono::duration` 和 `std::chrono::time_point` 来直接进行时间差计算，并且支持不同的精度。
 
-- **使用 `std::time_t`**：
-  - `std::difftime` 用于计算时间差，返回类型为 `double`（秒差）。
-- **使用 `std::chrono`**：
-  - 可以使用 `std::chrono::duration` 和 `std::chrono::time_point` 来直接进行时间差计算，并且支持不同的精度。
-
-#### `std::chrono` 时间差计算示例：
-
-```cpp
-auto start = std::chrono::steady_clock::now();
-std::this_thread::sleep_for(std::chrono::seconds(5));
-auto end = std::chrono::steady_clock::now();
-auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
-std::cout << "延迟时间: " << duration.count() << " 秒" << std::endl;
-```
+   #### `std::chrono` 时间差计算示例：
+   ```cpp
+   auto start = std::chrono::steady_clock::now();
+   std::this_thread::sleep_for(std::chrono::seconds(5));
+   auto end = std::chrono::steady_clock::now();
+   auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+   std::cout << "延迟时间: " << duration.count() << " 秒" << std::endl;
+   ```
 
 ### 4. **格式化时间**
+   - **使用 `std::strftime`**：
+     可以使用 `std::strftime` 将 `std::tm` 转换为特定格式的字符串。
 
-- **使用 `std::strftime`**：
-  可以使用 `std::strftime` 将 `std::tm` 转换为特定格式的字符串。
-
-  #### 示例：
-
-  ```cpp
-  std::time_t now = std::time(nullptr);
-  char buffer[80];
-  std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
-  std::cout << "格式化时间: " << buffer << std::endl;
-  ```
+     #### 示例：
+     ```cpp
+     std::time_t now = std::time(nullptr);
+     char buffer[80];
+     std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+     std::cout << "格式化时间: " << buffer << std::endl;
+     ```
 
 ### 5. **高精度计时**
-
-- **`std::chrono::high_resolution_clock`**：提供了最高精度的计时器，适用于对时间精度有较高要求的场合。
-- **`steady_clock`**：适用于测量时间间隔，不会受系统时间更改的影响。
+   - **`std::chrono::high_resolution_clock`**：提供了最高精度的计时器，适用于对时间精度有较高要求的场合。
+   - **`steady_clock`**：适用于测量时间间隔，不会受系统时间更改的影响。
 
 ### 6. **常见时间操作**
-
-- 获取当前时间：
-  - **`std::time_t`**: `std::time(nullptr)`
-  - **`std::chrono`**: `std::chrono::system_clock::now()`
-- 时间延迟：
-  - **`std::this_thread::sleep_for`** 用于延迟，支持秒、毫秒等时间单位。
-- 计算时间差：
-  - **`std::time_t`**: 使用 `std::difftime` 计算时间差。
-  - **`std::chrono`**: 使用 `std::chrono::duration_cast` 计算时间差，返回指定精度。
+   - 获取当前时间：
+     - **`std::time_t`**: `std::time(nullptr)`
+     - **`std::chrono`**: `std::chrono::system_clock::now()`
+   - 时间延迟：
+     - **`std::this_thread::sleep_for`** 用于延迟，支持秒、毫秒等时间单位。
+   - 计算时间差：
+     - **`std::time_t`**: 使用 `std::difftime` 计算时间差。
+     - **`std::chrono`**: 使用 `std::chrono::duration_cast` 计算时间差，返回指定精度。
 
 ### 总结：
-
 - 使用 `std::time_t` 和 `std::tm` 适合处理较为传统的时间操作，能够进行时间戳转换、格式化、简单的时间差计算。
 - `std::chrono` 提供了更精确和灵活的时间操作，支持多种时钟和时间单位，适合现代 C++ 程序。
 - 在需要高精度计时时，`std::chrono` 提供了比 `std::time_t` 更强大的功能。
@@ -3425,9 +3268,7 @@ std::cout << "延迟时间: " << duration.count() << " 秒" << std::endl;
 ---
 
 ### **1. 安装**
-
 #### 方法一：从源码直接使用
-
 1. 克隆项目：
    ```bash
    git clone https://github.com/ReneNyffenegger/cpp-base64.git
@@ -3435,9 +3276,7 @@ std::cout << "延迟时间: " << duration.count() << " 秒" << std::endl;
 2. 直接将 `base64.cpp` 和 `base64.h` 文件复制到你的项目中。
 
 #### 方法二：使用包管理器
-
 如果你的项目使用 vcpkg，可以安装：
-
 ```bash
 vcpkg install base64
 ```
@@ -3445,15 +3284,12 @@ vcpkg install base64
 ---
 
 ### **2. 基本用法**
-
 #### 引入头文件
-
 ```cpp
 #include "base64.h"
 ```
 
 #### 示例代码
-
 ```cpp
 #include <iostream>
 #include <string>
@@ -3461,7 +3297,7 @@ vcpkg install base64
 
 int main() {
     std::string original = "Hello, Base64!";
-
+    
     // Base64 编码
     std::string encoded = base64_encode(reinterpret_cast<const unsigned char*>(original.c_str()), original.length());
     std::cout << "Encoded: " << encoded << std::endl;
@@ -3477,11 +3313,9 @@ int main() {
 ---
 
 ### **3. 核心函数**
-
 `cpp-base64` 提供以下核心函数：
 
 #### **1. `base64_encode`**
-
 **作用**：将数据进行 Base64 编码。
 
 - **函数原型**：
@@ -3494,7 +3328,6 @@ int main() {
 - **返回值**：编码后的 Base64 字符串。
 
 #### **2. `base64_decode`**
-
 **作用**：将 Base64 字符串解码为原始数据。
 
 - **函数原型**：
@@ -3508,21 +3341,17 @@ int main() {
 ---
 
 ### **4. 示例输入输出**
-
 #### 输入字符串：
-
 ```plaintext
 Hello, Base64!
 ```
 
 #### 编码后的输出：
-
 ```plaintext
 SGVsbG8sIEJhc2U2NCE=
 ```
 
 #### 解码后的输出：
-
 ```plaintext
 Hello, Base64!
 ```
@@ -3530,7 +3359,6 @@ Hello, Base64!
 ---
 
 ### **5. 注意事项**
-
 1. **数据类型转换**：
    - 对于字符串输入，需要将其转换为字节数组（通常通过 `reinterpret_cast` 实现）。
    - 编码后的 Base64 是字符串格式，无需额外处理。
@@ -3538,3 +3366,6 @@ Hello, Base64!
    - Base64 通常用于编码二进制数据（如图像文件、密钥等）。处理二进制文件时，需小心输入和输出的格式。
 3. **性能**：
    - `cpp-base64` 是轻量级实现，适合中小规模的编码需求。如果处理大规模数据，需评估其性能。
+
+
+
